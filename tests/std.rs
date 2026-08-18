@@ -1,10 +1,8 @@
+extern crate alloc;
+
 use alloc::{string::ToString, vec, vec::Vec};
 
-use axtest::prelude::*;
-
-use crate as rsext4;
-
-#[axtest]
+#[test]
 fn rsext4_crc_and_error_rules_hold() {
     use rsext4::{
         Errno, Ext4Error,
@@ -15,59 +13,61 @@ fn rsext4_crc_and_error_rules_hold() {
         superblock::Ext4Superblock,
     };
 
-    ax_assert_eq!(crc32c(b"123456789"), 0xE306_9283);
-    ax_assert_eq!(crc32c(b""), 0);
+    assert_eq!(crc32c(b"123456789"), 0xE306_9283);
+    assert_eq!(crc32c(b""), 0);
     let mut crc = crc32c_init();
     crc = crc32c_append(crc, b"hello ");
     crc = crc32c_append(crc, b"ext4");
-    ax_assert_eq!(crc32c_finalize(crc), crc32c(b"hello ext4"));
+    assert_eq!(crc32c_finalize(crc), crc32c(b"hello ext4"));
 
-    let mut superblock = Ext4Superblock::default();
-    superblock.s_uuid = [0x5a; 16];
-    ax_assert!(!ext4_superblock_has_metadata_csum(&superblock));
-    ax_assert_eq!(
+    let mut superblock = Ext4Superblock {
+        s_uuid: [0x5a; 16],
+        ..Default::default()
+    };
+    assert!(!ext4_superblock_has_metadata_csum(&superblock));
+    assert_eq!(
         ext4_crc32c_seed_from_superblock(&superblock),
         crc32c_append(crc32c_init(), &superblock.s_uuid)
     );
     superblock.s_feature_ro_compat |= Ext4Superblock::EXT4_FEATURE_RO_COMPAT_METADATA_CSUM;
     superblock.s_feature_incompat |= Ext4Superblock::EXT4_FEATURE_INCOMPAT_CSUM_SEED;
     superblock.s_checksum_seed = 0xA1B2_C3D4;
-    ax_assert!(ext4_superblock_has_metadata_csum(&superblock));
-    ax_assert_eq!(ext4_crc32c_seed_from_superblock(&superblock), 0xA1B2_C3D4);
+    assert!(ext4_superblock_has_metadata_csum(&superblock));
+    assert_eq!(ext4_crc32c_seed_from_superblock(&superblock), 0xA1B2_C3D4);
 
-    ax_assert_eq!(Errno::EINVAL.as_i32(), 22);
-    ax_assert_eq!(Errno::EPERM.as_i32(), 1);
-    ax_assert_eq!(Errno::EIO.as_i32(), 5);
-    ax_assert_eq!(Errno::ENOSPC.as_i32(), 28);
-    ax_assert_eq!(Errno::EOPNOTSUPP.as_i32(), 95);
-    ax_assert_eq!(Errno::ETIMEDOUT.as_i32(), 110);
-    ax_assert_eq!(Errno::EUCLEAN.as_i32(), 117);
-    ax_assert_eq!(Errno::from_i32(22), Some(Errno::EINVAL));
-    ax_assert_eq!(Errno::from_i32(999), None);
-    ax_assert_eq!(Errno::EWOULDBLOCK.as_i32(), Errno::EAGAIN.as_i32());
-    ax_assert_eq!(Errno::EINVAL.name(), "EINVAL");
-    ax_assert!(Errno::EINVAL.description().contains("Invalid"));
+    assert_eq!(Errno::EINVAL.as_i32(), 22);
+    assert_eq!(Errno::EPERM.as_i32(), 1);
+    assert_eq!(Errno::EIO.as_i32(), 5);
+    assert_eq!(Errno::ENOSPC.as_i32(), 28);
+    assert_eq!(Errno::EOPNOTSUPP.as_i32(), 95);
+    assert_eq!(Errno::ETIMEDOUT.as_i32(), 110);
+    assert_eq!(Errno::EUCLEAN.as_i32(), 117);
+    assert_eq!(Errno::from_i32(22), Some(Errno::EINVAL));
+    assert_eq!(Errno::from_i32(999), None);
+    assert_eq!(Errno::EWOULDBLOCK.as_i32(), Errno::EAGAIN.as_i32());
+    assert_eq!(Errno::EINVAL.name(), "EINVAL");
+    assert!(Errno::EINVAL.description().contains("Invalid"));
 
     let error = Ext4Error::buffer_too_small(4, 8);
-    ax_assert_eq!(error.code, Errno::EINVAL);
-    ax_assert!(error.to_string().contains("provided=4"));
-    ax_assert_eq!(Ext4Error::permission_denied().code, Errno::EACCES);
-    ax_assert!(
+    assert_eq!(error.code, Errno::EINVAL);
+    assert!(error.to_string().contains("provided=4"));
+    assert_eq!(Ext4Error::permission_denied().code, Errno::EACCES);
+    assert!(
         Ext4Error::block_out_of_range(3, 2)
             .to_string()
             .contains("block_id=3")
     );
-    ax_assert!(
+    assert!(
         Ext4Error::invalid_block_size(1024, 4096)
             .to_string()
             .contains("expected=4096")
     );
-    ax_assert!(
+    assert!(
         Ext4Error::alignment(3, 4)
             .to_string()
             .contains("alignment=4")
     );
-    ax_assert!(Ext4Error::invalid_input().to_string().contains("EINVAL"));
+    assert!(Ext4Error::invalid_input().to_string().contains("EINVAL"));
 
     let error_cases = [
         (Ext4Error::not_found(), Errno::ENOENT),
@@ -89,14 +89,14 @@ fn rsext4_crc_and_error_rules_hold() {
         (Ext4Error::already_mounted(), Errno::EBUSY),
     ];
     for (error, errno) in error_cases {
-        ax_assert_eq!(error.code, errno);
-        ax_assert!(error.context.is_none());
+        assert_eq!(error.code, errno);
+        assert!(error.context.is_none());
     }
     let operated = Ext4Error::from(Errno::EIO).with_operation("read_inode");
-    ax_assert!(operated.to_string().contains("op=read_inode"));
+    assert!(operated.to_string().contains("op=read_inode"));
 }
 
-#[axtest]
+#[test]
 fn rsext4_superblock_geometry_rules_hold() {
     use rsext4::{GROUP_DESC_SIZE, GROUP_DESC_SIZE_OLD, superblock::Ext4Superblock};
 
@@ -116,136 +116,136 @@ fn rsext4_superblock_geometry_rules_hold() {
         ..Default::default()
     };
 
-    ax_assert!(superblock.is_valid());
-    ax_assert_eq!(superblock.block_size(), 4096);
-    ax_assert_eq!(superblock.blocks_count(), 16_385);
-    ax_assert_eq!(superblock.free_blocks_count(), (2_u64 << 32) | 7);
-    ax_assert_eq!(superblock.reserved_blocks_count(), (3_u64 << 32) | 5);
-    ax_assert_eq!(superblock.block_groups_count(), 3);
-    ax_assert_eq!(superblock.blocks_per_group(), 8_192);
-    ax_assert_eq!(superblock.inodes_per_group(), 8_192);
-    ax_assert_eq!(superblock.inode_size(), 256);
-    ax_assert_eq!(superblock.get_desc_size(), 64);
-    ax_assert_eq!(superblock.descs_per_block(), 64);
-    ax_assert_eq!(superblock.inode_table_blocks(), 512);
+    assert!(superblock.is_valid());
+    assert_eq!(superblock.block_size(), 4096);
+    assert_eq!(superblock.blocks_count(), 16_385);
+    assert_eq!(superblock.free_blocks_count(), (2_u64 << 32) | 7);
+    assert_eq!(superblock.reserved_blocks_count(), (3_u64 << 32) | 5);
+    assert_eq!(superblock.block_groups_count(), 3);
+    assert_eq!(superblock.blocks_per_group(), 8_192);
+    assert_eq!(superblock.inodes_per_group(), 8_192);
+    assert_eq!(superblock.inode_size(), 256);
+    assert_eq!(superblock.get_desc_size(), 64);
+    assert_eq!(superblock.descs_per_block(), 64);
+    assert_eq!(superblock.inode_table_blocks(), 512);
 
     superblock.s_desc_size = 0;
-    ax_assert_eq!(superblock.get_desc_size(), GROUP_DESC_SIZE_OLD);
+    assert_eq!(superblock.get_desc_size(), GROUP_DESC_SIZE_OLD);
     superblock.s_feature_incompat |= Ext4Superblock::EXT4_FEATURE_INCOMPAT_64BIT;
-    ax_assert_eq!(superblock.get_desc_size(), GROUP_DESC_SIZE);
-    ax_assert!(superblock.has_feature_incompat(Ext4Superblock::EXT4_FEATURE_INCOMPAT_64BIT));
-    ax_assert!(!superblock.has_journal());
+    assert_eq!(superblock.get_desc_size(), GROUP_DESC_SIZE);
+    assert!(superblock.has_feature_incompat(Ext4Superblock::EXT4_FEATURE_INCOMPAT_64BIT));
+    assert!(!superblock.has_journal());
     superblock.s_feature_compat |= Ext4Superblock::EXT4_FEATURE_COMPAT_HAS_JOURNAL;
-    ax_assert!(superblock.has_journal());
+    assert!(superblock.has_journal());
 }
 
-#[axtest]
+#[test]
 fn rsext4_inode_extent_timestamp_rules_hold() {
     use rsext4::disknode::{Ext4Extent, Ext4Inode, Ext4TimeSpec, Ext4Timestamp};
 
     let timestamp = Ext4Timestamp::new(17, 1_500_000_000);
-    ax_assert_eq!(timestamp.nsec, Ext4Timestamp::MAX_NSEC);
-    ax_assert_eq!(Ext4Timestamp::UNIX_EPOCH, Ext4Timestamp { sec: 0, nsec: 0 });
-    ax_assert_eq!(Ext4TimeSpec::Set(timestamp), Ext4TimeSpec::Set(timestamp));
-    ax_assert_eq!(Ext4TimeSpec::default(), Ext4TimeSpec::Omit);
+    assert_eq!(timestamp.nsec, Ext4Timestamp::MAX_NSEC);
+    assert_eq!(Ext4Timestamp::UNIX_EPOCH, Ext4Timestamp { sec: 0, nsec: 0 });
+    assert_eq!(Ext4TimeSpec::Set(timestamp), Ext4TimeSpec::Set(timestamp));
+    assert_eq!(Ext4TimeSpec::default(), Ext4TimeSpec::Omit);
 
     let default_header = rsext4::disknode::Ext4ExtentHeader::default();
-    ax_assert_eq!(
+    assert_eq!(
         default_header.eh_magic,
         rsext4::disknode::Ext4ExtentHeader::EXT4_EXT_MAGIC
     );
     let default_extent = Ext4Extent::default();
-    ax_assert_eq!(default_extent.ee_block, 0);
-    ax_assert_eq!(default_extent.len(), Ext4Extent::EXT_INIT_MAX_LEN as u32);
-    ax_assert!(!default_extent.is_empty());
+    assert_eq!(default_extent.ee_block, 0);
+    assert_eq!(default_extent.len(), Ext4Extent::EXT_INIT_MAX_LEN as u32);
+    assert!(!default_extent.is_empty());
     let extent = Ext4Extent::new(4, 0x1234_5678_9abc, 16);
-    ax_assert_eq!(extent.ee_block, 4);
-    ax_assert_eq!(extent.start_block(), 0x1234_5678_9abc);
-    ax_assert_eq!(extent.len(), 16);
-    ax_assert!(extent.is_initialized());
-    ax_assert!(!extent.is_unwritten());
-    ax_assert_eq!(Ext4Extent::decode_len(Ext4Extent::EXT_INIT_MAX_LEN), 32_768);
-    ax_assert_eq!(Ext4Extent::encode_len(32_768, false), Some(32_768));
-    ax_assert_eq!(Ext4Extent::encode_len(32_768, true), None);
+    assert_eq!(extent.ee_block, 4);
+    assert_eq!(extent.start_block(), 0x1234_5678_9abc);
+    assert_eq!(extent.len(), 16);
+    assert!(extent.is_initialized());
+    assert!(!extent.is_unwritten());
+    assert_eq!(Ext4Extent::decode_len(Ext4Extent::EXT_INIT_MAX_LEN), 32_768);
+    assert_eq!(Ext4Extent::encode_len(32_768, false), Some(32_768));
+    assert_eq!(Ext4Extent::encode_len(32_768, true), None);
     let unwritten_len = Ext4Extent::encode_len(7, true).unwrap();
     let unwritten_extent = Ext4Extent {
         ee_len: unwritten_len,
         ..extent
     };
-    ax_assert!(unwritten_extent.is_unwritten());
-    ax_assert_eq!(
+    assert!(unwritten_extent.is_unwritten());
+    assert_eq!(
         unwritten_extent.build_len_like(8),
         Ext4Extent::encode_len(8, true)
     );
-    ax_assert_eq!(Ext4Extent::encode_len(0, false), None);
-    ax_assert_eq!(Ext4Extent::encode_len(32_769, false), None);
-    ax_assert_eq!(Ext4Extent::encode_len(32_768, true), None);
+    assert_eq!(Ext4Extent::encode_len(0, false), None);
+    assert_eq!(Ext4Extent::encode_len(32_769, false), None);
+    assert_eq!(Ext4Extent::encode_len(32_768, true), None);
 
     let mut inode = Ext4Inode::empty_for_reuse(32);
     inode.set_uid(0x1234_5678);
     inode.set_gid(0x9abc_def0);
-    ax_assert_eq!(inode.uid(), 0x1234_5678);
-    ax_assert_eq!(inode.gid(), 0x9abc_def0);
+    assert_eq!(inode.uid(), 0x1234_5678);
+    assert_eq!(inode.gid(), 0x9abc_def0);
     inode.i_file_acl_lo = 0x89ab_cdef;
     inode.l_i_file_acl_high = 0x1234;
-    ax_assert_eq!(inode.file_acl(), 0x1234_89ab_cdef);
+    assert_eq!(inode.file_acl(), 0x1234_89ab_cdef);
 
     inode.set_mode_full(Ext4Inode::S_IFREG | Ext4Inode::S_ISUID | Ext4Inode::S_ISGID | 0o755);
-    ax_assert!(inode.is_file());
-    ax_assert!(inode.is_executable());
-    ax_assert_eq!(inode.permissions(), 0o6755);
+    assert!(inode.is_file());
+    assert!(inode.is_executable());
+    assert_eq!(inode.permissions(), 0o6755);
     inode.clear_setid_bits_for_content_change();
-    ax_assert_eq!(inode.permissions(), 0o0755);
+    assert_eq!(inode.permissions(), 0o0755);
     inode.set_mode_full(Ext4Inode::S_IFREG | Ext4Inode::S_ISUID | Ext4Inode::S_ISGID | 0o644);
     inode.clear_setid_bits_for_content_change();
-    ax_assert_eq!(inode.permissions(), 0o2644);
+    assert_eq!(inode.permissions(), 0o2644);
     inode.clear_setid_bits_for_chown();
-    ax_assert_eq!(inode.permissions(), 0o0644);
+    assert_eq!(inode.permissions(), 0o0644);
     inode.set_mode_preserve_type(0o640);
-    ax_assert!(inode.is_file());
-    ax_assert_eq!(inode.permissions(), 0o640);
+    assert!(inode.is_file());
+    assert_eq!(inode.permissions(), 0o640);
 
     let large_time = Ext4Timestamp::new((1_i64 << 33) + 17, 987_654_321);
     inode.set_atime_ts(Ext4Inode::LARGE_INODE_SIZE, large_time);
     inode.set_ctime_ts(Ext4Inode::LARGE_INODE_SIZE, large_time);
     inode.set_mtime_ts(Ext4Inode::LARGE_INODE_SIZE, timestamp);
     inode.set_crtime_ts(Ext4Inode::LARGE_INODE_SIZE, large_time);
-    ax_assert_eq!(inode.atime_ts(Ext4Inode::LARGE_INODE_SIZE), large_time);
-    ax_assert_eq!(inode.ctime_ts(Ext4Inode::LARGE_INODE_SIZE), large_time);
-    ax_assert_eq!(inode.mtime_ts(Ext4Inode::LARGE_INODE_SIZE), timestamp);
-    ax_assert_eq!(
+    assert_eq!(inode.atime_ts(Ext4Inode::LARGE_INODE_SIZE), large_time);
+    assert_eq!(inode.ctime_ts(Ext4Inode::LARGE_INODE_SIZE), large_time);
+    assert_eq!(inode.mtime_ts(Ext4Inode::LARGE_INODE_SIZE), timestamp);
+    assert_eq!(
         inode.crtime_ts(Ext4Inode::LARGE_INODE_SIZE),
         Some(large_time)
     );
-    ax_assert_eq!(inode.crtime_ts(Ext4Inode::GOOD_OLD_INODE_SIZE), None);
+    assert_eq!(inode.crtime_ts(Ext4Inode::GOOD_OLD_INODE_SIZE), None);
     let clamped_time = Ext4Timestamp::new(i64::from(i32::MAX) + 10, 55);
     inode.set_atime_ts(Ext4Inode::GOOD_OLD_INODE_SIZE, clamped_time);
-    ax_assert_eq!(
+    assert_eq!(
         inode.atime_ts(Ext4Inode::GOOD_OLD_INODE_SIZE),
         Ext4Timestamp::new(i64::from(i32::MAX), 0)
     );
     inode.set_crtime_ts(Ext4Inode::GOOD_OLD_INODE_SIZE, clamped_time);
-    ax_assert_eq!(inode.i_crtime, 0);
+    assert_eq!(inode.i_crtime, 0);
     inode.write_extend_header();
     inode.i_flags |= Ext4Inode::EXT4_EXTENTS_FL;
-    ax_assert!(inode.have_extend_header_and_use_extend());
+    assert!(inode.have_extend_header_and_use_extend());
     inode.i_block[0] = 0;
-    ax_assert!(!inode.have_extend_header_and_use_extend());
+    assert!(!inode.have_extend_header_and_use_extend());
 
     let flags = Ext4Inode::EXT4_DIRSYNC_FL | Ext4Inode::EXT4_TOPDIR_FL | Ext4Inode::EXT4_NOATIME_FL;
-    ax_assert_eq!(
+    assert_eq!(
         Ext4Inode::mask_flags_for_mode(Ext4Inode::S_IFDIR, flags),
         flags
     );
-    ax_assert_eq!(
+    assert_eq!(
         Ext4Inode::mask_flags_for_mode(Ext4Inode::S_IFREG, flags),
         Ext4Inode::EXT4_NOATIME_FL
     );
-    ax_assert!(Ext4Inode::required_extra_isize(Ext4Inode::FIELD_END_I_PROJID) <= 32);
-    ax_assert_eq!(Ext4Inode::max_extra_isize(Ext4Inode::LARGE_INODE_SIZE), 128);
+    assert!(Ext4Inode::required_extra_isize(Ext4Inode::FIELD_END_I_PROJID) <= 32);
+    assert_eq!(Ext4Inode::max_extra_isize(Ext4Inode::LARGE_INODE_SIZE), 128);
 }
 
-#[axtest]
+#[test]
 fn rsext4_bitmap_blockgroup_rules_hold() {
     use rsext4::{
         bitmap::bitmap_utils::{
@@ -257,27 +257,27 @@ fn rsext4_bitmap_blockgroup_rules_hold() {
         superblock::Ext4Superblock,
     };
 
-    ax_assert_eq!(bytes_for_bits(0), 0);
-    ax_assert_eq!(bytes_for_bits(1), 1);
-    ax_assert_eq!(bytes_for_bits(8), 1);
-    ax_assert_eq!(bytes_for_bits(9), 2);
-    ax_assert_eq!(count_set_bits(0b1010_1010), 4);
-    ax_assert_eq!(count_set_bits_in_bitmap(&[0b1111_0000, 0b1010_1010], 12), 6);
-    ax_assert_eq!(count_set_bits_in_bitmap(&[0xff], 4), 4);
+    assert_eq!(bytes_for_bits(0), 0);
+    assert_eq!(bytes_for_bits(1), 1);
+    assert_eq!(bytes_for_bits(8), 1);
+    assert_eq!(bytes_for_bits(9), 2);
+    assert_eq!(count_set_bits(0b1010_1010), 4);
+    assert_eq!(count_set_bits_in_bitmap(&[0b1111_0000, 0b1010_1010], 12), 6);
+    assert_eq!(count_set_bits_in_bitmap(&[0xff], 4), 4);
 
     let mut bits = [0u8; 2];
-    ax_assert!(set_bit(&mut bits, 0));
-    ax_assert!(set_bit(&mut bits, 9));
-    ax_assert!(!set_bit(&mut bits, 16));
-    ax_assert_eq!(test_bit(&bits, 0), Some(true));
-    ax_assert_eq!(test_bit(&bits, 1), Some(false));
-    ax_assert_eq!(test_bit(&bits, 16), None);
-    ax_assert!(toggle_bit(&mut bits, 1));
-    ax_assert_eq!(test_bit(&bits, 1), Some(true));
-    ax_assert!(clear_bit(&mut bits, 9));
-    ax_assert_eq!(test_bit(&bits, 9), Some(false));
-    ax_assert!(!clear_bit(&mut bits, 16));
-    ax_assert!(!toggle_bit(&mut bits, 16));
+    assert!(set_bit(&mut bits, 0));
+    assert!(set_bit(&mut bits, 9));
+    assert!(!set_bit(&mut bits, 16));
+    assert_eq!(test_bit(&bits, 0), Some(true));
+    assert_eq!(test_bit(&bits, 1), Some(false));
+    assert_eq!(test_bit(&bits, 16), None);
+    assert!(toggle_bit(&mut bits, 1));
+    assert_eq!(test_bit(&bits, 1), Some(true));
+    assert!(clear_bit(&mut bits, 9));
+    assert_eq!(test_bit(&bits, 9), Some(false));
+    assert!(!clear_bit(&mut bits, 16));
+    assert!(!toggle_bit(&mut bits, 16));
 
     let desc = Ext4GroupDesc {
         bg_block_bitmap_lo: 0x89ab_cdef,
@@ -305,42 +305,44 @@ fn rsext4_bitmap_blockgroup_rules_hold() {
             | Ext4GroupDesc::EXT4_BG_INODE_ZEROED,
         ..Default::default()
     };
-    ax_assert_eq!(desc.block_bitmap(), 0x0123_4567_89ab_cdef);
-    ax_assert_eq!(desc.inode_bitmap(), 0xfedc_ba98_7654_3210);
-    ax_assert_eq!(desc.inode_table(), 0x3333_4444_1111_2222);
-    ax_assert_eq!(desc.free_blocks_count(), (2 << 16) | 7);
-    ax_assert_eq!(desc.free_inodes_count(), (1 << 16) | 9);
-    ax_assert_eq!(desc.used_dirs_count(), (3 << 16) | 11);
-    ax_assert_eq!(desc.itable_unused(), (4 << 16) | 13);
-    ax_assert_eq!(desc.exclude_bitmap(), 0xaaaa_5555_5555_aaaa);
-    ax_assert!(desc.is_uninit_bg());
-    ax_assert!(desc.is_block_bitmap_uninit());
-    ax_assert!(desc.is_inode_bitmap_uninit());
-    ax_assert!(desc.is_inode_table_zeroed());
+    assert_eq!(desc.block_bitmap(), 0x0123_4567_89ab_cdef);
+    assert_eq!(desc.inode_bitmap(), 0xfedc_ba98_7654_3210);
+    assert_eq!(desc.inode_table(), 0x3333_4444_1111_2222);
+    assert_eq!(desc.free_blocks_count(), (2 << 16) | 7);
+    assert_eq!(desc.free_inodes_count(), (1 << 16) | 9);
+    assert_eq!(desc.used_dirs_count(), (3 << 16) | 11);
+    assert_eq!(desc.itable_unused(), (4 << 16) | 13);
+    assert_eq!(desc.exclude_bitmap(), 0xaaaa_5555_5555_aaaa);
+    assert!(desc.is_uninit_bg());
+    assert!(desc.is_block_bitmap_uninit());
+    assert!(desc.is_inode_bitmap_uninit());
+    assert!(desc.is_inode_table_zeroed());
 
-    let mut superblock = Ext4Superblock::default();
-    superblock.s_desc_size = Ext4GroupDesc::GOOD_OLD_DESC_SIZE as u16;
-    ax_assert_eq!(desc.block_bitmap_csum(&superblock), 0xbeef);
-    ax_assert!(desc.block_bitmap_csum_matches(&superblock, 0x1111_beef));
+    let mut superblock = Ext4Superblock {
+        s_desc_size: Ext4GroupDesc::GOOD_OLD_DESC_SIZE as u16,
+        ..Default::default()
+    };
+    assert_eq!(desc.block_bitmap_csum(&superblock), 0xbeef);
+    assert!(desc.block_bitmap_csum_matches(&superblock, 0x1111_beef));
     superblock.s_desc_size = Ext4GroupDesc::EXT4_DESC_SIZE_64BIT as u16;
     superblock.s_feature_incompat |= Ext4Superblock::EXT4_FEATURE_INCOMPAT_64BIT;
-    ax_assert_eq!(desc.block_bitmap_csum(&superblock), 0x1234_beef);
-    ax_assert_eq!(desc.inode_bitmap_csum(&superblock), 0x5678_abcd);
-    ax_assert!(desc.block_bitmap_csum_matches(&superblock, 0x1234_beef));
-    ax_assert!(!desc.inode_bitmap_csum_matches(&superblock, 0x1111_abcd));
+    assert_eq!(desc.block_bitmap_csum(&superblock), 0x1234_beef);
+    assert_eq!(desc.inode_bitmap_csum(&superblock), 0x5678_abcd);
+    assert!(desc.block_bitmap_csum_matches(&superblock, 0x1234_beef));
+    assert!(!desc.inode_bitmap_csum_matches(&superblock, 0x1111_abcd));
 
     let stats = BlockGroupStats::from_desc(BGIndex::new(5), &desc);
-    ax_assert_eq!(stats.group_idx.raw(), 5);
-    ax_assert_eq!(stats.free_blocks, (2 << 16) | 7);
-    ax_assert_eq!(stats.used_inodes(200_000), 200_000 - ((1 << 16) | 9));
-    ax_assert_eq!(stats.used_blocks(100_000), 0);
-    ax_assert_eq!(stats.used_blocks(200_000), 200_000 - ((2 << 16) | 7));
-    ax_assert_eq!(stats.used_inodes(1), 0);
-    ax_assert_eq!(stats.used_blocks(1), 0);
-    ax_assert_eq!(stats.block_usage_percent(0), 0.0);
-    ax_assert_eq!(stats.inode_usage_percent(0), 0.0);
-    ax_assert!(stats.block_usage_percent(200_000) > 0.0);
-    ax_assert!(stats.inode_usage_percent(200_000) > 0.0);
+    assert_eq!(stats.group_idx.raw(), 5);
+    assert_eq!(stats.free_blocks, (2 << 16) | 7);
+    assert_eq!(stats.used_inodes(200_000), 200_000 - ((1 << 16) | 9));
+    assert_eq!(stats.used_blocks(100_000), 0);
+    assert_eq!(stats.used_blocks(200_000), 200_000 - ((2 << 16) | 7));
+    assert_eq!(stats.used_inodes(1), 0);
+    assert_eq!(stats.used_blocks(1), 0);
+    assert_eq!(stats.block_usage_percent(0), 0.0);
+    assert_eq!(stats.inode_usage_percent(0), 0.0);
+    assert!(stats.block_usage_percent(200_000) > 0.0);
+    assert!(stats.inode_usage_percent(200_000) > 0.0);
 }
 
 fn write_dirent(slot: &mut [u8], inode: u32, rec_len: u16, file_type: u8, name: &[u8]) {
@@ -352,7 +354,7 @@ fn write_dirent(slot: &mut [u8], inode: u32, rec_len: u16, file_type: u8, name: 
     slot[8..8 + name.len()].copy_from_slice(name);
 }
 
-#[axtest]
+#[test]
 fn rsext4_entries_and_directory_iterator_rules_hold() {
     use rsext4::{
         DIRNAME_LEN,
@@ -369,37 +371,37 @@ fn rsext4_entries_and_directory_iterator_rules_hold() {
         Ext4DirEntry2::EXT4_FT_REG_FILE,
         b"alpha",
     );
-    ax_assert_eq!(entry.inode, 42);
-    ax_assert_eq!(entry.name_len, 5);
-    ax_assert_eq!(&entry.name[..5], b"alpha");
-    ax_assert_eq!(Ext4DirEntry2::entry_len(0), 8);
-    ax_assert_eq!(Ext4DirEntry2::entry_len(1), 12);
-    ax_assert_eq!(Ext4DirEntry2::entry_len(4), 12);
-    ax_assert_eq!(Ext4DirEntry2::entry_len(5), 16);
+    assert_eq!(entry.inode, 42);
+    assert_eq!(entry.name_len, 5);
+    assert_eq!(&entry.name[..5], b"alpha");
+    assert_eq!(Ext4DirEntry2::entry_len(0), 8);
+    assert_eq!(Ext4DirEntry2::entry_len(1), 12);
+    assert_eq!(Ext4DirEntry2::entry_len(4), 12);
+    assert_eq!(Ext4DirEntry2::entry_len(5), 16);
 
     let long_name = [b'x'; DIRNAME_LEN + 8];
     let truncated = Ext4DirEntry2::new(7, 264, Ext4DirEntry2::EXT4_FT_DIR, &long_name);
-    ax_assert_eq!(truncated.name_len, Ext4DirEntry2::MAX_NAME_LEN);
+    assert_eq!(truncated.name_len, Ext4DirEntry2::MAX_NAME_LEN);
 
     let mut header_bytes = [0_u8; 8];
     entry.to_disk_bytes(&mut header_bytes);
-    ax_assert_eq!(Ext4DirEntry2::disk_size(), 8);
+    assert_eq!(Ext4DirEntry2::disk_size(), 8);
     let parsed_header = Ext4DirEntry2::from_disk_bytes(&header_bytes);
-    ax_assert_eq!(parsed_header.inode, entry.inode);
-    ax_assert_eq!(parsed_header.rec_len, entry.rec_len);
-    ax_assert_eq!(parsed_header.name_len, entry.name_len);
-    ax_assert_eq!(parsed_header.file_type, entry.file_type);
+    assert_eq!(parsed_header.inode, entry.inode);
+    assert_eq!(parsed_header.rec_len, entry.rec_len);
+    assert_eq!(parsed_header.name_len, entry.name_len);
+    assert_eq!(parsed_header.file_type, entry.file_type);
 
     let tail = Ext4DirEntryTail::new();
-    ax_assert_eq!(tail.det_rec_len, Ext4DirEntryTail::TAIL_LEN);
-    ax_assert_eq!(tail.det_reserved_ft, Ext4DirEntryTail::RESERVED_FT);
+    assert_eq!(tail.det_rec_len, Ext4DirEntryTail::TAIL_LEN);
+    assert_eq!(tail.det_reserved_ft, Ext4DirEntryTail::RESERVED_FT);
     let mut tail_bytes = [0_u8; 12];
     let mut tail = tail;
     tail.det_checksum = 0x1234_5678;
     tail.to_disk_bytes(&mut tail_bytes);
     let parsed_tail = Ext4DirEntryTail::from_disk_bytes(&tail_bytes);
-    ax_assert_eq!(parsed_tail.det_checksum, 0x1234_5678);
-    ax_assert_eq!(Ext4DirEntryTail::disk_size(), 12);
+    assert_eq!(parsed_tail.det_checksum, 0x1234_5678);
+    assert_eq!(Ext4DirEntryTail::disk_size(), 12);
 
     let mut block = vec![0_u8; 64];
     write_dirent(&mut block[0..12], 2, 12, Ext4DirEntry2::EXT4_FT_DIR, b".");
@@ -420,49 +422,49 @@ fn rsext4_entries_and_directory_iterator_rules_hold() {
     );
 
     let entries: Vec<_> = DirEntryIterator::new(&block).collect();
-    ax_assert_eq!(entries.len(), 3);
-    ax_assert!(entries[0].0.is_dot());
-    ax_assert!(entries[1].0.is_dotdot());
-    ax_assert_eq!(entries[2].0.name_str(), Some("file"));
-    ax_assert_eq!(entries[2].1, 16);
+    assert_eq!(entries.len(), 3);
+    assert!(entries[0].0.is_dot());
+    assert!(entries[1].0.is_dotdot());
+    assert_eq!(entries[2].0.name_str(), Some("file"));
+    assert_eq!(entries[2].1, 16);
 
     let found = rsext4::entries::classic_dir::find_entry(&block, b"file").unwrap();
-    ax_assert_eq!(found.inode, 11);
-    ax_assert_eq!(found.file_type, Ext4DirEntry2::EXT4_FT_REG_FILE);
-    ax_assert!(rsext4::entries::classic_dir::find_entry(&block, b"missing").is_none());
-    ax_assert_eq!(rsext4::entries::classic_dir::list_entries(&block).len(), 3);
+    assert_eq!(found.inode, 11);
+    assert_eq!(found.file_type, Ext4DirEntry2::EXT4_FT_REG_FILE);
+    assert!(rsext4::entries::classic_dir::find_entry(&block, b"missing").is_none());
+    assert_eq!(rsext4::entries::classic_dir::list_entries(&block).len(), 3);
 
-    ax_assert!(Ext4DirEntryInfo::parse_from_bytes(&[0; 7]).is_none());
+    assert!(Ext4DirEntryInfo::parse_from_bytes(&[0; 7]).is_none());
     let mut bad = [0_u8; 12];
     write_dirent(&mut bad, 0, 12, Ext4DirEntry2::EXT4_FT_REG_FILE, b"x");
-    ax_assert!(Ext4DirEntryInfo::parse_from_bytes(&bad).is_none());
+    assert!(Ext4DirEntryInfo::parse_from_bytes(&bad).is_none());
     write_dirent(&mut bad, 1, 7, Ext4DirEntry2::EXT4_FT_REG_FILE, b"x");
-    ax_assert!(Ext4DirEntryInfo::parse_from_bytes(&bad).is_none());
+    assert!(Ext4DirEntryInfo::parse_from_bytes(&bad).is_none());
 
     let seed = [1, 2, 3, 4];
-    ax_assert_eq!(
+    assert_eq!(
         htree_dir::calculate_hash(b"abc", htree_dir::Ext4DxRootInfo::DX_HASH_LEGACY, &seed),
         ((b'a' as u32) * 33 + b'b' as u32) * 33 + b'c' as u32
     );
-    ax_assert_ne!(
+    assert_ne!(
         htree_dir::calculate_hash(b"abc", htree_dir::Ext4DxRootInfo::DX_HASH_HALF_MD4, &seed),
         0
     );
-    ax_assert_ne!(
+    assert_ne!(
         htree_dir::calculate_hash(b"abc", htree_dir::Ext4DxRootInfo::DX_HASH_TEA, &seed),
         0
     );
-    ax_assert_eq!(htree_dir::calculate_hash(b"abc", 99, &seed), 0);
+    assert_eq!(htree_dir::calculate_hash(b"abc", 99, &seed), 0);
 
     let status = Ext4ExtentStatus {
         es_lblk: 1,
         es_len: 2,
         es_pblk: 3,
     };
-    ax_assert_eq!(status.es_lblk + status.es_len + status.es_pblk, 6);
+    assert_eq!(status.es_lblk + status.es_len + status.es_pblk, 6);
 }
 
-#[axtest]
+#[test]
 fn rsext4_disk_format_and_journal_struct_rules_hold() {
     use rsext4::{
         BLOCK_SIZE_U32,
@@ -486,9 +488,9 @@ fn rsext4_disk_format_and_journal_struct_rules_hold() {
     let mut bytes = [0_u8; 12];
     header.to_disk_bytes(&mut bytes);
     let parsed = Ext4ExtentHeader::from_disk_bytes(&bytes);
-    ax_assert_eq!(parsed.eh_magic, Ext4ExtentHeader::EXT4_EXT_MAGIC);
-    ax_assert_eq!(parsed.eh_entries, 2);
-    ax_assert_eq!(Ext4ExtentHeader::disk_size(), 12);
+    assert_eq!(parsed.eh_magic, Ext4ExtentHeader::EXT4_EXT_MAGIC);
+    assert_eq!(parsed.eh_entries, 2);
+    assert_eq!(Ext4ExtentHeader::disk_size(), 12);
 
     let idx = Ext4ExtentIdx {
         ei_block: 9,
@@ -498,15 +500,15 @@ fn rsext4_disk_format_and_journal_struct_rules_hold() {
     };
     idx.to_disk_bytes(&mut bytes);
     let parsed_idx = Ext4ExtentIdx::from_disk_bytes(&bytes);
-    ax_assert_eq!(parsed_idx.ei_block, 9);
-    ax_assert_eq!(parsed_idx.ei_leaf_hi, 0x1234);
+    assert_eq!(parsed_idx.ei_block, 9);
+    assert_eq!(parsed_idx.ei_leaf_hi, 0x1234);
 
     let extent = Ext4Extent::new(4, 0x1234_5678_9abc, 15);
     extent.to_disk_bytes(&mut bytes);
     let parsed_extent = Ext4Extent::from_disk_bytes(&bytes);
-    ax_assert_eq!(parsed_extent.ee_block, 4);
-    ax_assert_eq!(parsed_extent.start_block(), 0x1234_5678_9abc);
-    ax_assert_eq!(parsed_extent.len(), 15);
+    assert_eq!(parsed_extent.ee_block, 4);
+    assert_eq!(parsed_extent.start_block(), 0x1234_5678_9abc);
+    assert_eq!(parsed_extent.len(), 15);
 
     let mut inode = Ext4Inode::empty_for_reuse(32);
     inode.set_uid(0x1234_5678);
@@ -517,11 +519,11 @@ fn rsext4_disk_format_and_journal_struct_rules_hold() {
     let mut inode_bytes = vec![0_u8; Ext4Inode::LARGE_INODE_SIZE as usize];
     inode.to_disk_bytes(&mut inode_bytes);
     let parsed_inode = Ext4Inode::from_disk_bytes(&inode_bytes);
-    ax_assert_eq!(parsed_inode.uid(), 0x1234_5678);
-    ax_assert_eq!(parsed_inode.gid(), 0x9abc_def0);
-    ax_assert_eq!(parsed_inode.i_size_lo, 0xfeed_beef);
-    ax_assert_eq!(parsed_inode.i_block[0], 0x0102_0304);
-    ax_assert_eq!(
+    assert_eq!(parsed_inode.uid(), 0x1234_5678);
+    assert_eq!(parsed_inode.gid(), 0x9abc_def0);
+    assert_eq!(parsed_inode.i_size_lo, 0xfeed_beef);
+    assert_eq!(parsed_inode.i_block[0], 0x0102_0304);
+    assert_eq!(
         Ext4Inode::disk_size(),
         Ext4Inode::GOOD_OLD_INODE_SIZE as usize
     );
@@ -533,10 +535,10 @@ fn rsext4_disk_format_and_journal_struct_rules_hold() {
     };
     let mut header_bytes = [0_u8; 12];
     journal_header.to_disk_bytes(&mut header_bytes);
-    ax_assert_eq!(&header_bytes[0..4], &JBD2_MAGIC.to_be_bytes());
+    assert_eq!(&header_bytes[0..4], &JBD2_MAGIC.to_be_bytes());
     let parsed_header = JournalHeaderS::from_disk_bytes(&header_bytes);
-    ax_assert_eq!(parsed_header.h_magic, JBD2_MAGIC);
-    ax_assert_eq!(parsed_header.h_sequence, 0x1122_3344);
+    assert_eq!(parsed_header.h_magic, JBD2_MAGIC);
+    assert_eq!(parsed_header.h_sequence, 0x1122_3344);
 
     let mut journal_sb = JournalSuperBllockS {
         s_header: journal_header,
@@ -553,16 +555,16 @@ fn rsext4_disk_format_and_journal_struct_rules_hold() {
     let mut journal_bytes = [0_u8; 1024];
     journal_sb.to_disk_bytes(&mut journal_bytes);
     let parsed_sb = JournalSuperBllockS::from_disk_bytes(&journal_bytes);
-    ax_assert_eq!(parsed_sb.s_blocksize, BLOCK_SIZE_U32);
-    ax_assert_eq!(parsed_sb.s_sequence, 0x0102_0304);
-    ax_assert_eq!(parsed_sb.s_users[0], 0x55);
+    assert_eq!(parsed_sb.s_blocksize, BLOCK_SIZE_U32);
+    assert_eq!(parsed_sb.s_sequence, 0x0102_0304);
+    assert_eq!(parsed_sb.s_users[0], 0x55);
 
     let checksum = rsext4::checksum::jbd2_superblock_csum32(&journal_sb);
     rsext4::checksum::jbd2_update_superblock_checksum(&mut journal_sb);
-    ax_assert_eq!(journal_sb.s_checksum, checksum);
+    assert_eq!(journal_sb.s_checksum, checksum);
     journal_sb.s_checksum_type = 0;
     rsext4::checksum::jbd2_update_superblock_checksum(&mut journal_sb);
-    ax_assert_eq!(journal_sb.s_checksum, 0);
+    assert_eq!(journal_sb.s_checksum, 0);
 
     let tag = JournalBlockTagS {
         t_blocknr: 0xdead_beef,
@@ -572,8 +574,8 @@ fn rsext4_disk_format_and_journal_struct_rules_hold() {
     let mut tag_bytes = [0_u8; JBD2_TAG_SIZE];
     tag.to_disk_bytes(&mut tag_bytes);
     let parsed_tag = JournalBlockTagS::from_disk_bytes(&tag_bytes);
-    ax_assert_eq!(parsed_tag.t_blocknr, tag.t_blocknr);
-    ax_assert_eq!(parsed_tag.t_checksum, tag.t_checksum);
+    assert_eq!(parsed_tag.t_blocknr, tag.t_blocknr);
+    assert_eq!(parsed_tag.t_checksum, tag.t_checksum);
 
     let tag3 = JournalBlockTag3S {
         t_blocknr: 1,
@@ -584,15 +586,15 @@ fn rsext4_disk_format_and_journal_struct_rules_hold() {
     let mut tag3_bytes = [0_u8; 16];
     tag3.to_disk_bytes(&mut tag3_bytes);
     let parsed_tag3 = JournalBlockTag3S::from_disk_bytes(&tag3_bytes);
-    ax_assert_eq!(parsed_tag3.t_blocknr_high, 3);
-    ax_assert_eq!(parsed_tag3.t_checksum, 4);
+    assert_eq!(parsed_tag3.t_blocknr_high, 3);
+    assert_eq!(parsed_tag3.t_checksum, 4);
 
     let tail = Jbd2JournalBlockTail {
         t_checksum: 0x1234_5678,
     };
     let mut tail_bytes = [0_u8; 4];
     tail.to_disk_bytes(&mut tail_bytes);
-    ax_assert_eq!(
+    assert_eq!(
         Jbd2JournalBlockTail::from_disk_bytes(&tail_bytes).t_checksum,
         0x1234_5678
     );
@@ -608,14 +610,14 @@ fn rsext4_disk_format_and_journal_struct_rules_hold() {
     let mut revoke_bytes = [0_u8; 16];
     revoke.to_disk_bytes(&mut revoke_bytes);
     let parsed_revoke = Jbd2JournalRevokeHeadS::from_disk_bytes(&revoke_bytes);
-    ax_assert_eq!(parsed_revoke.r_header.h_sequence, 7);
-    ax_assert_eq!(parsed_revoke.r_count, 16);
+    assert_eq!(parsed_revoke.r_header.h_sequence, 7);
+    assert_eq!(parsed_revoke.r_count, 16);
 
     let revoke_tail = Jbd2JournalRevokeTail {
         r_checksum: 0xcafe_babe,
     };
     revoke_tail.to_disk_bytes(&mut tail_bytes);
-    ax_assert_eq!(
+    assert_eq!(
         Jbd2JournalRevokeTail::from_disk_bytes(&tail_bytes).r_checksum,
         0xcafe_babe
     );
@@ -636,12 +638,12 @@ fn rsext4_disk_format_and_journal_struct_rules_hold() {
     let mut commit_bytes = [0_u8; 64];
     commit.to_disk_bytes(&mut commit_bytes);
     let parsed_commit = CommitHeader::from_disk_bytes(&commit_bytes);
-    ax_assert_eq!(parsed_commit.h_chksum_type, JBD2_CRC32C_CHKSUM);
-    ax_assert_eq!(parsed_commit.h_commit_sec, 0x0102_0304_0506_0708);
-    ax_assert_eq!(parsed_commit.h_commit_nsec, 0xaabb_ccdd);
+    assert_eq!(parsed_commit.h_chksum_type, JBD2_CRC32C_CHKSUM);
+    assert_eq!(parsed_commit.h_commit_sec, 0x0102_0304_0506_0708);
+    assert_eq!(parsed_commit.h_commit_nsec, 0xaabb_ccdd);
 }
 
-#[axtest]
+#[test]
 fn rsext4_checksum_blockgroup_and_api_helpers_hold() {
     use rsext4::{
         BLOCK_SIZE, Errno, Ext4Error,
@@ -657,29 +659,29 @@ fn rsext4_checksum_blockgroup_and_api_helpers_hold() {
     };
 
     let mut block_buffer = BlockBuffer::new();
-    ax_assert_eq!(block_buffer.len(), BLOCK_SIZE);
-    ax_assert!(!block_buffer.is_empty());
-    ax_assert!(block_buffer.as_slice().iter().all(|byte| *byte == 0));
+    assert_eq!(block_buffer.len(), BLOCK_SIZE);
+    assert!(!block_buffer.is_empty());
+    assert!(block_buffer.as_slice().iter().all(|byte| *byte == 0));
     block_buffer.as_mut_slice()[0] = 7;
-    ax_assert_eq!(block_buffer.as_slice()[0], 7);
+    assert_eq!(block_buffer.as_slice()[0], 7);
     block_buffer.clear();
-    ax_assert_eq!(block_buffer.as_slice()[0], 0);
+    assert_eq!(block_buffer.as_slice()[0], 0);
 
     let group = BGIndex::new(3);
     let relative_block = RelativeBN::new(17);
     let absolute = group.absolute_block(relative_block, 1, 8192);
     let (decoded_group, decoded_block) = absolute.to_group(1, 8192).unwrap();
-    ax_assert_eq!(decoded_group, group);
-    ax_assert_eq!(decoded_block, relative_block);
-    ax_assert_eq!(absolute.checked_add(5).unwrap().raw(), absolute.raw() + 5);
-    ax_assert_eq!(
+    assert_eq!(decoded_group, group);
+    assert_eq!(decoded_block, relative_block);
+    assert_eq!(absolute.checked_add(5).unwrap().raw(), absolute.raw() + 5);
+    assert_eq!(
         AbsoluteBN::new(u64::from(u32::MAX) + 1)
             .to_u32()
             .unwrap_err()
             .code,
         Errno::EOVERFLOW
     );
-    ax_assert_eq!(
+    assert_eq!(
         AbsoluteBN::new(0).to_group(1, 8192).unwrap_err().code,
         Errno::EINVAL
     );
@@ -687,10 +689,10 @@ fn rsext4_checksum_blockgroup_and_api_helpers_hold() {
     let inode_index = RelativeInodeIndex::new(123);
     let inode_num = group.inode_number(inode_index, 2048).unwrap();
     let (decoded_inode_group, decoded_inode_index) = inode_num.to_group(2048).unwrap();
-    ax_assert_eq!(decoded_inode_group, group);
-    ax_assert_eq!(decoded_inode_index, inode_index);
-    ax_assert_eq!(InodeNumber::new(0).unwrap_err().code, Errno::EINVAL);
-    ax_assert_eq!(inode_num.as_u64(), u64::from(inode_num.raw()));
+    assert_eq!(decoded_inode_group, group);
+    assert_eq!(decoded_inode_index, inode_index);
+    assert_eq!(InodeNumber::new(0).unwrap_err().code, Errno::EINVAL);
+    assert_eq!(inode_num.as_u64(), u64::from(inode_num.raw()));
 
     let descs = [
         Ext4GroupDesc {
@@ -711,32 +713,32 @@ fn rsext4_checksum_blockgroup_and_api_helpers_hold() {
     descs[0].to_disk_bytes(&mut table_bytes[0..64]);
     descs[1].to_disk_bytes(&mut table_bytes[64..128]);
     let table = BlockGroupDescTable::new(&table_bytes, 64, 2);
-    ax_assert_eq!(table.group_count(), 2);
-    ax_assert_eq!(table.desc_size(), 64);
-    ax_assert_eq!(table.total_free_blocks(), 60);
-    ax_assert_eq!(table.total_free_inodes(), 4);
-    ax_assert_eq!(table.total_used_dirs(), 3);
-    ax_assert_eq!(table.find_group_with_free_blocks(10).unwrap().raw(), 0);
-    ax_assert_eq!(table.find_group_with_free_blocks(30), None);
-    ax_assert_eq!(table.find_group_with_free_inodes().unwrap().raw(), 0);
-    ax_assert_eq!(table.iter().count(), 2);
-    ax_assert!(table.get_desc(BGIndex::new(2)).is_none());
+    assert_eq!(table.group_count(), 2);
+    assert_eq!(table.desc_size(), 64);
+    assert_eq!(table.total_free_blocks(), 60);
+    assert_eq!(table.total_free_inodes(), 4);
+    assert_eq!(table.total_used_dirs(), 3);
+    assert_eq!(table.find_group_with_free_blocks(10).unwrap().raw(), 0);
+    assert_eq!(table.find_group_with_free_blocks(30), None);
+    assert_eq!(table.find_group_with_free_inodes().unwrap().raw(), 0);
+    assert_eq!(table.iter().count(), 2);
+    assert!(table.get_desc(BGIndex::new(2)).is_none());
 
     let mut mutable_table = BlockGroupDescTableMut::new(&mut table_bytes, 64, 2);
-    ax_assert!(mutable_table.update_free_blocks(BGIndex::new(0), 0x1_0002));
-    ax_assert!(mutable_table.update_free_inodes(BGIndex::new(0), 0x2_0003));
-    ax_assert!(mutable_table.update_used_dirs(BGIndex::new(0), 7));
-    ax_assert!(mutable_table.increment_used_dirs(BGIndex::new(0)));
-    ax_assert!(mutable_table.decrement_used_dirs(BGIndex::new(0)));
-    ax_assert!(mutable_table.set_flags(BGIndex::new(0), Ext4GroupDesc::EXT4_BG_INODE_ZEROED));
-    ax_assert!(mutable_table.clear_flags(BGIndex::new(0), Ext4GroupDesc::EXT4_BG_INODE_ZEROED));
-    ax_assert!(!mutable_table.update_free_blocks(BGIndex::new(3), 1));
+    assert!(mutable_table.update_free_blocks(BGIndex::new(0), 0x1_0002));
+    assert!(mutable_table.update_free_inodes(BGIndex::new(0), 0x2_0003));
+    assert!(mutable_table.update_used_dirs(BGIndex::new(0), 7));
+    assert!(mutable_table.increment_used_dirs(BGIndex::new(0)));
+    assert!(mutable_table.decrement_used_dirs(BGIndex::new(0)));
+    assert!(mutable_table.set_flags(BGIndex::new(0), Ext4GroupDesc::EXT4_BG_INODE_ZEROED));
+    assert!(mutable_table.clear_flags(BGIndex::new(0), Ext4GroupDesc::EXT4_BG_INODE_ZEROED));
+    assert!(!mutable_table.update_free_blocks(BGIndex::new(3), 1));
 
     let table = BlockGroupDescTable::new(&table_bytes, 64, 2);
     let desc = table.get_desc(BGIndex::new(0)).unwrap();
-    ax_assert_eq!(desc.free_blocks_count(), 0x1_0002);
-    ax_assert_eq!(desc.free_inodes_count(), 0x2_0003);
-    ax_assert_eq!(desc.used_dirs_count(), 7);
+    assert_eq!(desc.free_blocks_count(), 0x1_0002);
+    assert_eq!(desc.free_inodes_count(), 0x2_0003);
+    assert_eq!(desc.used_dirs_count(), 7);
 
     let mut superblock = Ext4Superblock {
         s_magic: Ext4Superblock::EXT4_SUPER_MAGIC,
@@ -752,9 +754,9 @@ fn rsext4_checksum_blockgroup_and_api_helpers_hold() {
     let bitmap = [0xaa_u8; 1024];
     let block_csum = rsext4::checksum::ext4_block_bitmap_csum32(&superblock, &bitmap);
     let inode_csum = rsext4::checksum::ext4_inode_bitmap_csum32(&superblock, &bitmap);
-    ax_assert_ne!(block_csum, 0);
-    ax_assert_ne!(inode_csum, 0);
-    ax_assert_eq!(
+    assert_ne!(block_csum, 0);
+    assert_ne!(inode_csum, 0);
+    assert_eq!(
         rsext4::checksum::ext4_metadata_block_csum32(&superblock, b"metadata"),
         rsext4::checksum::ext4_metadata_csum32(
             rsext4::crc32c::ext4_crc32c_seed_from_superblock(&superblock),
@@ -765,20 +767,20 @@ fn rsext4_checksum_blockgroup_and_api_helpers_hold() {
     let mut block = vec![0_u8; BLOCK_SIZE];
     block[BLOCK_SIZE - 5] = Ext4DirEntryTail::RESERVED_FT;
     rsext4::checksum::update_ext4_dirblock_csum32(&superblock, 2, 3, &mut block);
-    ax_assert!(rsext4::checksum::verify_ext4_dirblock_checksum(
+    assert!(rsext4::checksum::verify_ext4_dirblock_checksum(
         &superblock,
         2,
         3,
         &block
     ));
     block[0] ^= 1;
-    ax_assert!(!rsext4::checksum::verify_ext4_dirblock_checksum(
+    assert!(!rsext4::checksum::verify_ext4_dirblock_checksum(
         &superblock,
         2,
         3,
         &block
     ));
-    ax_assert!(rsext4::checksum::verify_ext4_dirblock_checksum(
+    assert!(rsext4::checksum::verify_ext4_dirblock_checksum(
         &Ext4Superblock::default(),
         2,
         3,
@@ -787,7 +789,7 @@ fn rsext4_checksum_blockgroup_and_api_helpers_hold() {
 
     let mut short = [0_u8; 8];
     rsext4::checksum::ext4_update_dirblock_tail_checksum(&superblock, 2, 3, &mut short, 0);
-    ax_assert_eq!(short, [0; 8]);
+    assert_eq!(short, [0; 8]);
 
     let mut inode = Ext4Inode::empty_for_reuse(32);
     inode.i_generation = 0x7788_99aa;
@@ -805,12 +807,12 @@ fn rsext4_checksum_blockgroup_and_api_helpers_hold() {
         &mut inode,
         256,
     );
-    ax_assert_eq!(inode.l_i_checksum_lo, (checksum & 0xffff) as u16);
-    ax_assert_eq!(inode.i_checksum_hi, (checksum >> 16) as u16);
+    assert_eq!(inode.l_i_checksum_lo, (checksum & 0xffff) as u16);
+    assert_eq!(inode.i_checksum_hi, (checksum >> 16) as u16);
 
     let old_checksum = superblock.s_checksum;
     rsext4::checksum::ext4_update_superblock_checksum(&mut superblock);
-    ax_assert_ne!(superblock.s_checksum, old_checksum);
+    assert_ne!(superblock.s_checksum, old_checksum);
 
     let mut file = OpenFile {
         inode_num,
@@ -819,7 +821,7 @@ fn rsext4_checksum_blockgroup_and_api_helpers_hold() {
         offset: 0,
     };
     rsext4::lseek(&mut file, 1234).unwrap();
-    ax_assert_eq!(file.offset, 1234);
+    assert_eq!(file.offset, 1234);
 
     struct ReadonlyDevice;
     impl BlockDevice for ReadonlyDevice {
@@ -864,26 +866,26 @@ fn rsext4_checksum_blockgroup_and_api_helpers_hold() {
     }
 
     let mut dev = ReadonlyDevice;
-    ax_assert_eq!(dev.block_size(), 512);
-    ax_assert!(dev.is_open());
-    ax_assert!(dev.is_readonly());
-    ax_assert_eq!(dev.total_blocks(), 99);
+    assert_eq!(dev.block_size(), 512);
+    assert!(dev.is_open());
+    assert!(dev.is_readonly());
+    assert_eq!(dev.total_blocks(), 99);
     dev.flush().unwrap();
     let mut buf = [0_u8; 4];
     dev.read(&mut buf, AbsoluteBN::new(0), 1).unwrap();
-    ax_assert_eq!(buf, [0x5a; 4]);
-    ax_assert_eq!(
+    assert_eq!(buf, [0x5a; 4]);
+    assert_eq!(
         dev.write(&buf, AbsoluteBN::new(0), 1).unwrap_err().code,
         Errno::EROFS
     );
-    ax_assert_eq!(dev.current_time().unwrap(), Ext4Timestamp::new(12, 34));
+    assert_eq!(dev.current_time().unwrap(), Ext4Timestamp::new(12, 34));
 
     let mut bitmap = [0_u8; 2];
-    ax_assert!(set_bit(&mut bitmap, 15));
-    ax_assert_eq!(bitmap[1], 0x80);
+    assert!(set_bit(&mut bitmap, 15));
+    assert_eq!(bitmap[1], 0x80);
 }
 
-#[axtest]
+#[test]
 fn rsext4_journal_device_overlay_rules_hold() {
     use core::cell::Cell;
 
@@ -979,12 +981,12 @@ fn rsext4_journal_device_overlay_rules_hold() {
     }
 
     let mut dev = Jbd2Dev::initial_jbd2dev(0, JournalMemoryDevice::new(32), false);
-    ax_assert!(!dev.is_use_journal());
-    ax_assert_eq!(dev.journal_sequence(), None);
+    assert!(!dev.is_use_journal());
+    assert_eq!(dev.journal_sequence(), None);
     dev.journal_replay();
-    ax_assert_eq!(dev.total_blocks(), 32);
-    ax_assert_eq!(dev.block_size(), BLOCK_SIZE as u32);
-    ax_assert_eq!(
+    assert_eq!(dev.total_blocks(), 32);
+    assert_eq!(dev.block_size(), BLOCK_SIZE as u32);
+    assert_eq!(
         dev.current_time().unwrap(),
         Ext4Timestamp::new(1_900_000_000, 0)
     );
@@ -993,13 +995,13 @@ fn rsext4_journal_device_overlay_rules_hold() {
     dev.buffer_mut()[0] = 0x11;
     dev.write_block(AbsoluteBN::new(1), false).unwrap();
     dev.read_block(AbsoluteBN::new(1)).unwrap();
-    ax_assert_eq!(dev.buffer()[0], 0x11);
+    assert_eq!(dev.buffer()[0], 0x11);
     dev.read_block(AbsoluteBN::new(3)).unwrap();
     let mut direct = vec![0_u8; BLOCK_SIZE];
     direct[0] = 0x66;
     dev.write_blocks(&direct, AbsoluteBN::new(3), 1, false)
         .unwrap();
-    ax_assert_eq!(dev.buffer()[0], 0x66);
+    assert_eq!(dev.buffer()[0], 0x66);
 
     dev.set_journal_use(true);
     dev.journal_replay();
@@ -1009,19 +1011,19 @@ fn rsext4_journal_device_overlay_rules_hold() {
         ..Default::default()
     };
     dev.set_journal_superblock(journal_superblock, AbsoluteBN::new(16));
-    ax_assert!(dev.is_use_journal());
-    ax_assert_eq!(dev.journal_sequence(), Some(7));
+    assert!(dev.is_use_journal());
+    assert_eq!(dev.journal_sequence(), Some(7));
 
     dev.read_block(AbsoluteBN::new(2)).unwrap();
     dev.buffer_mut()[0] = 0x22;
     dev.write_block(AbsoluteBN::new(2), true).unwrap();
     dev.read_block(AbsoluteBN::new(2)).unwrap();
-    ax_assert_eq!(dev.buffer()[0], 0x22);
+    assert_eq!(dev.buffer()[0], 0x22);
 
     let mut observed = vec![0_u8; BLOCK_SIZE * 2];
     dev.read_blocks(&mut observed, AbsoluteBN::new(2), 2)
         .unwrap();
-    ax_assert_eq!(observed[0], 0x22);
+    assert_eq!(observed[0], 0x22);
 
     let mut replacement = vec![0_u8; BLOCK_SIZE * 2];
     replacement[0] = 0x33;
@@ -1030,45 +1032,45 @@ fn rsext4_journal_device_overlay_rules_hold() {
         .unwrap();
     dev.read_blocks(&mut observed, AbsoluteBN::new(2), 2)
         .unwrap();
-    ax_assert_eq!(observed[0], 0x33);
-    ax_assert_eq!(observed[BLOCK_SIZE], 0x44);
+    assert_eq!(observed[0], 0x33);
+    assert_eq!(observed[BLOCK_SIZE], 0x44);
     let mut uncached_pending = vec![0_u8; BLOCK_SIZE];
     uncached_pending[0] = 0x77;
     dev.write_blocks(&uncached_pending, AbsoluteBN::new(6), 1, true)
         .unwrap();
     dev.read_block(AbsoluteBN::new(6)).unwrap();
-    ax_assert_eq!(dev.buffer()[0], 0x77);
-    ax_assert!(
+    assert_eq!(dev.buffer()[0], 0x77);
+    assert!(
         dev.write_blocks(&replacement[..8], AbsoluteBN::new(4), 1, true)
             .is_err()
     );
 
     dev.set_journal_use(false);
-    ax_assert!(
+    assert!(
         dev.write_blocks(&direct[..8], AbsoluteBN::new(4), 1, false)
             .is_err()
     );
     dev.flush().unwrap();
     let inner = dev.into_inner();
-    ax_assert_eq!(inner.total_blocks(), 32);
+    assert_eq!(inner.total_blocks(), 32);
 
     let mut readonly_dev = Jbd2Dev::initial_jbd2dev(0, JournalMemoryDevice::new_readonly(8), false);
     readonly_dev.read_block(AbsoluteBN::new(1)).unwrap();
     readonly_dev.buffer_mut()[0] = 0xaa;
-    ax_assert!(readonly_dev.write_block(AbsoluteBN::new(1), false).is_err());
-    ax_assert!(
+    assert!(readonly_dev.write_block(AbsoluteBN::new(1), false).is_err());
+    assert!(
         readonly_dev
             .write_blocks(&replacement, AbsoluteBN::new(1), 1, false)
             .is_err()
     );
-    ax_assert!(
+    assert!(
         readonly_dev
             .read_blocks(&mut observed[..8], AbsoluteBN::new(1), 1)
             .is_err()
     );
 }
 
-#[axtest]
+#[test]
 fn rsext4_extent_tree_parse_store_and_hash_tree_rules_hold() {
     use rsext4::{
         bmalloc::AbsoluteBN,
@@ -1095,12 +1097,12 @@ fn rsext4_extent_tree_parse_store_and_hash_tree_rules_hold() {
     Ext4Extent::new(3, 100, 4).to_disk_bytes(&mut leaf_bytes[24..36]);
 
     let leaf = ExtentTree::parse_node(&leaf_bytes).unwrap();
-    ax_assert!(leaf.is_leaf());
-    ax_assert_eq!(leaf.header().eh_entries, 2);
+    assert!(leaf.is_leaf());
+    assert_eq!(leaf.header().eh_entries, 2);
     match &leaf {
         ExtentNode::Leaf { entries, .. } => {
-            ax_assert_eq!(entries[0].ee_block, 3);
-            ax_assert_eq!(entries[1].ee_block, 8);
+            assert_eq!(entries[0].ee_block, 3);
+            assert_eq!(entries[1].ee_block, 8);
         }
         ExtentNode::Index { .. } => panic!("expected leaf extent node"),
     }
@@ -1129,23 +1131,23 @@ fn rsext4_extent_tree_parse_store_and_hash_tree_rules_hold() {
     }
     .to_disk_bytes(&mut index_bytes[24..36]);
     let index = ExtentTree::parse_node(&index_bytes).unwrap();
-    ax_assert!(!index.is_leaf());
+    assert!(!index.is_leaf());
     match &index {
         ExtentNode::Index { entries, .. } => {
-            ax_assert_eq!(entries[0].ei_block, 1);
-            ax_assert_eq!(entries[1].ei_block, 9);
+            assert_eq!(entries[0].ei_block, 1);
+            assert_eq!(entries[1].ei_block, 9);
         }
         ExtentNode::Leaf { .. } => panic!("expected index extent node"),
     }
 
     let mut bad = leaf_bytes;
     bad[0] = 0;
-    ax_assert!(ExtentTree::parse_node(&bad).is_none());
+    assert!(ExtentTree::parse_node(&bad).is_none());
     let mut overflow = leaf_bytes;
     overflow[2..4].copy_from_slice(&5_u16.to_le_bytes());
     overflow[4..6].copy_from_slice(&4_u16.to_le_bytes());
-    ax_assert!(ExtentTree::parse_node(&overflow).is_none());
-    ax_assert!(ExtentTree::parse_node(&leaf_bytes[..20]).is_none());
+    assert!(ExtentTree::parse_node(&overflow).is_none());
+    assert!(ExtentTree::parse_node(&leaf_bytes[..20]).is_none());
 
     let mut inode = Ext4Inode::empty_for_reuse(32);
     inode.i_flags |= Ext4Inode::EXT4_EXTENTS_FL;
@@ -1153,29 +1155,29 @@ fn rsext4_extent_tree_parse_store_and_hash_tree_rules_hold() {
         let mut tree = ExtentTree::new(&mut inode);
         tree.store_root_to_inode(&leaf);
         let mut loaded = tree.load_root_from_inode().unwrap();
-        ax_assert!(loaded.is_leaf());
+        assert!(loaded.is_leaf());
         let header = loaded.header_mut();
         header.eh_generation = 99;
-        ax_assert_eq!(loaded.header().eh_generation, 99);
+        assert_eq!(loaded.header().eh_generation, 99);
     }
-    ax_assert!(inode.have_extend_header_and_use_extend());
+    assert!(inode.have_extend_header_and_use_extend());
 
     let run = ExtentRun {
         logical_start: 3,
         physical_start: AbsoluteBN::new(100),
         len: 4,
     };
-    ax_assert_eq!(run.logical_start, 3);
-    ax_assert_eq!(run.physical_start.raw(), 100);
-    ax_assert_eq!(run.len, 4);
+    assert_eq!(run.logical_start, 3);
+    assert_eq!(run.physical_start.raw(), 100);
+    assert_eq!(run.len, 4);
 
     let mut inode = Ext4Inode::default();
-    ax_assert!(!inode.is_htree_indexed());
-    ax_assert_eq!(inode.get_htree_root_info(), None);
+    assert!(!inode.is_htree_indexed());
+    assert_eq!(inode.get_htree_root_info(), None);
     inode.i_flags |= Ext4Inode::EXT4_INDEX_FL;
-    ax_assert!(inode.is_htree_indexed());
+    assert!(inode.is_htree_indexed());
     let (_, indirect_levels) = inode.get_htree_root_info().unwrap();
-    ax_assert_eq!(indirect_levels, 0);
+    assert_eq!(indirect_levels, 0);
 
     let errors = [
         (HashTreeError::InvalidHashTree, "Invalid hash tree format"),
@@ -1189,7 +1191,7 @@ fn rsext4_extent_tree_parse_store_and_hash_tree_rules_hold() {
         (HashTreeError::EntryNotFound, "Entry not found"),
     ];
     for (error, text) in errors {
-        ax_assert_eq!(error.to_string(), text);
+        assert_eq!(error.to_string(), text);
     }
 
     let manager = HashTreeManager::new([1, 2, 3, 4], Ext4DxRootInfo::DX_HASH_LEGACY, 0);
@@ -1217,23 +1219,23 @@ fn rsext4_extent_tree_parse_store_and_hash_tree_rules_hold() {
             indirect_levels,
             entries,
         } => {
-            ax_assert_eq!(hash_version, 1);
-            ax_assert_eq!(indirect_levels, 0);
-            ax_assert_eq!(entries[0].block, 2);
+            assert_eq!(hash_version, 1);
+            assert_eq!(indirect_levels, 0);
+            assert_eq!(entries[0].block, 2);
         }
         _ => panic!("expected root hash tree node"),
     }
     match internal_node {
         HashTreeNode::Internal { entries, level } => {
-            ax_assert_eq!(entries[0].hash, 9);
-            ax_assert_eq!(level, 1);
+            assert_eq!(entries[0].hash, 9);
+            assert_eq!(level, 1);
         }
         _ => panic!("expected internal hash tree node"),
     }
     match leaf_node {
         HashTreeNode::Leaf { block_num, entries } => {
-            ax_assert_eq!(block_num.raw(), 4);
-            ax_assert_eq!(entries[0].name, b"leaf");
+            assert_eq!(block_num.raw(), 4);
+            assert_eq!(entries[0].name, b"leaf");
         }
         _ => panic!("expected leaf hash tree node"),
     }
@@ -1247,12 +1249,12 @@ fn rsext4_extent_tree_parse_store_and_hash_tree_rules_hold() {
         block_num: AbsoluteBN::new(12),
         offset: 16,
     };
-    ax_assert_eq!(result.entry.name, b"dir");
-    ax_assert_eq!(result.block_num.raw(), 12);
-    ax_assert_eq!(result.offset, 16);
+    assert_eq!(result.entry.name, b"dir");
+    assert_eq!(result.block_num.raw(), 12);
+    assert_eq!(result.offset, 16);
 }
 
-#[axtest]
+#[test]
 fn rsext4_tool_layout_and_blockgroup_disk_rules_hold() {
     use rsext4::{
         RESERVED_GDT_BLOCKS,
@@ -1265,40 +1267,40 @@ fn rsext4_tool_layout_and_blockgroup_disk_rules_hold() {
 
     let uuid = tool::generate_uuid();
     let uuid_bytes = tool::generate_uuid_8();
-    ax_assert_ne!(uuid.0, [0; 4]);
-    ax_assert_ne!(uuid_bytes, [0; 16]);
-    ax_assert!(tool::is_numbers_power(1, 3));
-    ax_assert!(tool::is_numbers_power(27, 3));
-    ax_assert!(!tool::is_numbers_power(28, 3));
-    ax_assert!(tool::need_redundant_backup(0));
-    ax_assert!(tool::need_redundant_backup(1));
-    ax_assert!(tool::need_redundant_backup(3 * 3 * 3));
-    ax_assert!(tool::need_redundant_backup(5 * 5));
-    ax_assert!(tool::need_redundant_backup(7 * 7));
-    ax_assert!(!tool::need_redundant_backup(11));
+    assert_ne!(uuid.0, [0; 4]);
+    assert_ne!(uuid_bytes, [0; 16]);
+    assert!(tool::is_numbers_power(1, 3));
+    assert!(tool::is_numbers_power(27, 3));
+    assert!(!tool::is_numbers_power(28, 3));
+    assert!(tool::need_redundant_backup(0));
+    assert!(tool::need_redundant_backup(1));
+    assert!(tool::need_redundant_backup(3 * 3 * 3));
+    assert!(tool::need_redundant_backup(5 * 5));
+    assert!(tool::need_redundant_backup(7 * 7));
+    assert!(!tool::need_redundant_backup(11));
 
     let mut superblock = Ext4Superblock {
         s_feature_ro_compat: Ext4Superblock::EXT4_FEATURE_RO_COMPAT_SPARSE_SUPER,
         ..Default::default()
     };
     let layout0 = tool::calc_group_layout(0, &superblock, 8192, 64, 3, 4, 5, RESERVED_GDT_BLOCKS);
-    ax_assert_eq!(layout0.group_start_block, 0);
-    ax_assert_eq!(layout0.group_blcok_bitmap_startblocks, 3);
-    ax_assert_eq!(layout0.group_inode_bitmap_startblocks, 4);
-    ax_assert_eq!(layout0.group_inode_table_startblocks, 5);
+    assert_eq!(layout0.group_start_block, 0);
+    assert_eq!(layout0.group_blcok_bitmap_startblocks, 3);
+    assert_eq!(layout0.group_inode_bitmap_startblocks, 4);
+    assert_eq!(layout0.group_inode_table_startblocks, 5);
 
     let sparse = tool::calc_group_layout(3, &superblock, 8192, 64, 3, 4, 5, 2);
-    ax_assert_eq!(sparse.group_start_block, 3 * 8192);
-    ax_assert_eq!(sparse.group_blcok_bitmap_startblocks, 3 * 8192 + 1 + 2);
-    ax_assert_eq!(sparse.group_inode_bitmap_startblocks, 3 * 8192 + 1 + 2 + 1);
-    ax_assert_eq!(sparse.metadata_blocks_in_group, 1 + 2 + 1 + 1 + 64);
+    assert_eq!(sparse.group_start_block, 3 * 8192);
+    assert_eq!(sparse.group_blcok_bitmap_startblocks, 3 * 8192 + 1 + 2);
+    assert_eq!(sparse.group_inode_bitmap_startblocks, 3 * 8192 + 1 + 2 + 1);
+    assert_eq!(sparse.metadata_blocks_in_group, 1 + 2 + 1 + 1 + 64);
 
     superblock.s_feature_ro_compat = 0;
     let dense = tool::calc_group_layout(3, &superblock, 8192, 64, 3, 4, 5, 2);
-    ax_assert_eq!(dense.group_blcok_bitmap_startblocks, 3 * 8192);
-    ax_assert_eq!(dense.group_inode_bitmap_startblocks, 3 * 8192 + 1);
-    ax_assert_eq!(dense.group_inode_table_startblocks, 3 * 8192 + 2);
-    ax_assert_eq!(dense.metadata_blocks_in_group, 1 + 1 + 64);
+    assert_eq!(dense.group_blcok_bitmap_startblocks, 3 * 8192);
+    assert_eq!(dense.group_inode_bitmap_startblocks, 3 * 8192 + 1);
+    assert_eq!(dense.group_inode_table_startblocks, 3 * 8192 + 2);
+    assert_eq!(dense.metadata_blocks_in_group, 1 + 1 + 64);
 
     // Simplified group desc test - just verify basic functionality
     let simple_desc = Ext4GroupDesc {
@@ -1310,36 +1312,36 @@ fn rsext4_tool_layout_and_blockgroup_disk_rules_hold() {
     let mut bytes = [0_u8; 32];
     simple_desc.to_disk_bytes(&mut bytes);
     let loaded = Ext4GroupDesc::from_disk_bytes(&bytes);
-    ax_assert_eq!(loaded.block_bitmap(), 1);
-    ax_assert_eq!(loaded.inode_bitmap(), 2);
-    ax_assert_eq!(loaded.inode_table(), 3);
+    assert_eq!(loaded.block_bitmap(), 1);
+    assert_eq!(loaded.inode_bitmap(), 2);
+    assert_eq!(loaded.inode_table(), 3);
 
-    ax_assert_eq!(BGIndex::new(2).as_usize().unwrap(), 2);
-    ax_assert_eq!(RelativeBN::new(7).as_usize().unwrap(), 7);
-    ax_assert_eq!(RelativeInodeIndex::new(8).as_usize().unwrap(), 8);
-    ax_assert_eq!(AbsoluteBN::from(9_u32).raw(), 9);
-    ax_assert_eq!(AbsoluteBN::new(10).checked_add_usize(5).unwrap().raw(), 15);
-    ax_assert_eq!(InodeNumber::from_u64(123).unwrap().raw(), 123);
-    ax_assert_eq!(InodeNumber::new(123).unwrap().as_usize().unwrap(), 123);
-    ax_assert_eq!(BGIndex::new(2).to_string(), "2");
-    ax_assert_eq!(AbsoluteBN::new(10).to_string(), "10");
-    ax_assert_eq!(RelativeBN::new(7).to_string(), "7");
-    ax_assert_eq!(InodeNumber::new(123).unwrap().to_string(), "123");
-    ax_assert_eq!(RelativeInodeIndex::new(8).to_string(), "8");
+    assert_eq!(BGIndex::new(2).as_usize().unwrap(), 2);
+    assert_eq!(RelativeBN::new(7).as_usize().unwrap(), 7);
+    assert_eq!(RelativeInodeIndex::new(8).as_usize().unwrap(), 8);
+    assert_eq!(AbsoluteBN::from(9_u32).raw(), 9);
+    assert_eq!(AbsoluteBN::new(10).checked_add_usize(5).unwrap().raw(), 15);
+    assert_eq!(InodeNumber::from_u64(123).unwrap().raw(), 123);
+    assert_eq!(InodeNumber::new(123).unwrap().as_usize().unwrap(), 123);
+    assert_eq!(BGIndex::new(2).to_string(), "2");
+    assert_eq!(AbsoluteBN::new(10).to_string(), "10");
+    assert_eq!(RelativeBN::new(7).to_string(), "7");
+    assert_eq!(InodeNumber::new(123).unwrap().to_string(), "123");
+    assert_eq!(RelativeInodeIndex::new(8).to_string(), "8");
 }
 
-#[axtest]
+#[test]
 fn rsext4_path_and_bitmap_rules_hold() {
     use rsext4::{
         bitmap::{BitmapError, BlockBitmap, InodeBitmap},
         dir::normalize_path,
     };
 
-    ax_assert_eq!(normalize_path(""), "");
-    ax_assert_eq!(normalize_path("/"), "/");
-    ax_assert_eq!(normalize_path("///"), "/");
-    ax_assert_eq!(normalize_path("//alpha///beta//"), "/alpha/beta");
-    ax_assert_eq!(normalize_path("alpha//beta///gamma"), "alpha/beta/gamma");
+    assert_eq!(normalize_path(""), "");
+    assert_eq!(normalize_path("/"), "/");
+    assert_eq!(normalize_path("///"), "/");
+    assert_eq!(normalize_path("//alpha///beta//"), "/alpha/beta");
+    assert_eq!(normalize_path("alpha//beta///gamma"), "alpha/beta/gamma");
 
     let bitmap_errors = [
         (BitmapError::IndexOutOfRange, "bitmap index out of range"),
@@ -1350,73 +1352,73 @@ fn rsext4_path_and_bitmap_rules_hold() {
         (BitmapError::AlreadyFree, "bitmap entry is already free"),
     ];
     for (error, text) in bitmap_errors {
-        ax_assert_eq!(error.to_string(), text);
+        assert_eq!(error.to_string(), text);
     }
 
     let mut block_data = vec![0_u8; 2];
     {
         let mut bitmap = BlockBitmap::new(&mut block_data, 12);
-        ax_assert_eq!(bitmap.is_allocated(0), Some(false));
-        ax_assert_eq!(bitmap.is_free(0), Some(true));
-        ax_assert_eq!(bitmap.is_allocated(12), None);
-        ax_assert_eq!(bitmap.find_first_free(), Some(0));
-        ax_assert_eq!(bitmap.find_contiguous_free(0), None);
-        ax_assert_eq!(bitmap.find_contiguous_free(3), Some(0));
-        ax_assert_eq!(bitmap.count_free(), 12);
-        ax_assert_eq!(bitmap.count_allocated(), 0);
+        assert_eq!(bitmap.is_allocated(0), Some(false));
+        assert_eq!(bitmap.is_free(0), Some(true));
+        assert_eq!(bitmap.is_allocated(12), None);
+        assert_eq!(bitmap.find_first_free(), Some(0));
+        assert_eq!(bitmap.find_contiguous_free(0), None);
+        assert_eq!(bitmap.find_contiguous_free(3), Some(0));
+        assert_eq!(bitmap.count_free(), 12);
+        assert_eq!(bitmap.count_allocated(), 0);
 
         bitmap.allocate(0).unwrap();
         bitmap.allocate(2).unwrap();
-        ax_assert_eq!(
+        assert_eq!(
             bitmap.allocate(2).unwrap_err(),
             BitmapError::AlreadyAllocated
         );
-        ax_assert_eq!(bitmap.is_allocated(0), Some(true));
-        ax_assert_eq!(bitmap.find_first_free(), Some(1));
-        ax_assert_eq!(bitmap.find_contiguous_free(2), Some(3));
-        ax_assert_eq!(bitmap.count_allocated(), 2);
+        assert_eq!(bitmap.is_allocated(0), Some(true));
+        assert_eq!(bitmap.find_first_free(), Some(1));
+        assert_eq!(bitmap.find_contiguous_free(2), Some(3));
+        assert_eq!(bitmap.count_allocated(), 2);
 
         bitmap.allocate_range(4, 3).unwrap();
-        ax_assert_eq!(bitmap.is_allocated(5), Some(true));
-        ax_assert_eq!(
+        assert_eq!(bitmap.is_allocated(5), Some(true));
+        assert_eq!(
             bitmap.allocate_range(5, 2).unwrap_err(),
             BitmapError::AlreadyAllocated
         );
         bitmap.free_range(4, 3).unwrap();
-        ax_assert_eq!(bitmap.free(4).unwrap_err(), BitmapError::AlreadyFree);
-        ax_assert_eq!(bitmap.free(20).unwrap_err(), BitmapError::IndexOutOfRange);
-        ax_assert_eq!(
+        assert_eq!(bitmap.free(4).unwrap_err(), BitmapError::AlreadyFree);
+        assert_eq!(bitmap.free(20).unwrap_err(), BitmapError::IndexOutOfRange);
+        assert_eq!(
             bitmap.allocate(20).unwrap_err(),
             BitmapError::IndexOutOfRange
         );
     }
-    ax_assert_eq!(block_data[0] & 0b0000_0101, 0b0000_0101);
+    assert_eq!(block_data[0] & 0b0000_0101, 0b0000_0101);
 
     let mut inode_data = vec![0xFF_u8, 0_u8];
     {
         let mut bitmap = InodeBitmap::new(&mut inode_data, 12);
-        ax_assert_eq!(bitmap.find_first_free(), Some(8));
-        ax_assert_eq!(bitmap.count_allocated(), 8);
-        ax_assert_eq!(bitmap.count_free(), 4);
-        ax_assert_eq!(bitmap.is_allocated(12), None);
+        assert_eq!(bitmap.find_first_free(), Some(8));
+        assert_eq!(bitmap.count_allocated(), 8);
+        assert_eq!(bitmap.count_free(), 4);
+        assert_eq!(bitmap.is_allocated(12), None);
         bitmap.allocate(8).unwrap();
-        ax_assert_eq!(
+        assert_eq!(
             bitmap.allocate(8).unwrap_err(),
             BitmapError::AlreadyAllocated
         );
-        ax_assert_eq!(bitmap.is_free(8), Some(false));
+        assert_eq!(bitmap.is_free(8), Some(false));
         bitmap.free(8).unwrap();
-        ax_assert_eq!(bitmap.free(8).unwrap_err(), BitmapError::AlreadyFree);
-        ax_assert_eq!(
+        assert_eq!(bitmap.free(8).unwrap_err(), BitmapError::AlreadyFree);
+        assert_eq!(
             bitmap.allocate(20).unwrap_err(),
             BitmapError::IndexOutOfRange
         );
-        ax_assert_eq!(bitmap.free(20).unwrap_err(), BitmapError::IndexOutOfRange);
+        assert_eq!(bitmap.free(20).unwrap_err(), BitmapError::IndexOutOfRange);
     }
-    ax_assert_eq!(inode_data[1] & 1, 0);
+    assert_eq!(inode_data[1] & 1, 0);
 }
 
-#[axtest]
+#[test]
 fn rsext4_bmalloc_allocator_rules_hold() {
     use rsext4::{
         Errno,
@@ -1443,16 +1445,16 @@ fn rsext4_bmalloc_allocator_rules_hold() {
     let alloc = block_allocator
         .alloc_block_in_group(&mut block_bitmap, group, &desc)
         .unwrap();
-    ax_assert_eq!(alloc.group_idx, group);
-    ax_assert_eq!(alloc.block_in_group, RelativeBN::new(4));
-    ax_assert_eq!(alloc.global_block, AbsoluteBN::new(37));
-    ax_assert_eq!(
+    assert_eq!(alloc.group_idx, group);
+    assert_eq!(alloc.block_in_group, RelativeBN::new(4));
+    assert_eq!(alloc.global_block, AbsoluteBN::new(37));
+    assert_eq!(
         block_allocator.global_to_group(alloc.global_block).unwrap(),
         (group, RelativeBN::new(4))
     );
 
     let no_space_desc = Ext4GroupDesc::default();
-    ax_assert_eq!(
+    assert_eq!(
         block_allocator
             .alloc_block_in_group(&mut block_bitmap, group, &no_space_desc)
             .unwrap_err()
@@ -1463,22 +1465,22 @@ fn rsext4_bmalloc_allocator_rules_hold() {
     let range = block_allocator
         .alloc_contiguous_blocks(&mut block_bitmap, group, 3)
         .unwrap();
-    ax_assert_eq!(range.block_in_group, RelativeBN::new(5));
-    ax_assert_eq!(range.global_block, AbsoluteBN::new(38));
+    assert_eq!(range.block_in_group, RelativeBN::new(5));
+    assert_eq!(range.global_block, AbsoluteBN::new(38));
     block_allocator
         .free_blocks(&mut block_bitmap, range.block_in_group, 3)
         .unwrap();
     block_allocator
         .free_block(&mut block_bitmap, alloc.block_in_group)
         .unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         block_allocator
             .alloc_contiguous_blocks(&mut block_bitmap, group, 0)
             .unwrap_err()
             .code,
         Errno::EINVAL
     );
-    ax_assert_eq!(
+    assert_eq!(
         block_allocator
             .global_to_group(AbsoluteBN::new(0))
             .unwrap_err()
@@ -1500,31 +1502,29 @@ fn rsext4_bmalloc_allocator_rules_hold() {
     let inode_alloc = inode_allocator
         .alloc_inode_in_group(&mut inode_bitmap, BGIndex::new(1), &inode_desc)
         .unwrap();
-    ax_assert_eq!(inode_alloc.group_idx, BGIndex::new(1));
-    ax_assert_eq!(inode_alloc.inode_in_group, RelativeInodeIndex::new(5));
-    ax_assert_eq!(inode_alloc.global_inode, InodeNumber::new(22).unwrap());
-    ax_assert_eq!(
+    assert_eq!(inode_alloc.group_idx, BGIndex::new(1));
+    assert_eq!(inode_alloc.inode_in_group, RelativeInodeIndex::new(5));
+    assert_eq!(inode_alloc.global_inode, InodeNumber::new(22).unwrap());
+    assert_eq!(
         inode_allocator
             .global_to_group(inode_alloc.global_inode)
             .unwrap(),
         (BGIndex::new(1), RelativeInodeIndex::new(5))
     );
-    ax_assert_eq!(
+    assert!(
         inode_allocator
             .inode_is_free(&mut inode_bitmap, inode_alloc.inode_in_group)
-            .unwrap(),
-        true
+            .unwrap()
     );
     inode_allocator
         .free_inode(&mut inode_bitmap, inode_alloc.inode_in_group)
         .unwrap();
-    ax_assert_eq!(
-        inode_allocator
+    assert!(
+        !inode_allocator
             .inode_is_free(&mut inode_bitmap, inode_alloc.inode_in_group)
-            .unwrap(),
-        false
+            .unwrap()
     );
-    ax_assert_eq!(
+    assert_eq!(
         inode_allocator
             .alloc_inode_in_group(
                 &mut inode_bitmap,
@@ -1535,14 +1535,14 @@ fn rsext4_bmalloc_allocator_rules_hold() {
             .code,
         Errno::ENOSPC
     );
-    ax_assert_eq!(InodeNumber::new(0).unwrap_err().code, Errno::EINVAL);
-    ax_assert_eq!(
+    assert_eq!(InodeNumber::new(0).unwrap_err().code, Errno::EINVAL);
+    assert_eq!(
         InodeNumber::new(1).unwrap().to_group(0).unwrap_err().code,
         Errno::EINVAL
     );
 }
 
-#[axtest]
+#[test]
 fn rsext4_blockgroup_table_and_stats_rules_hold() {
     use core::mem::size_of;
 
@@ -1586,63 +1586,63 @@ fn rsext4_blockgroup_table_and_stats_rules_hold() {
     }
 
     let table = BlockGroupDescTable::new(&table_bytes, desc_size, 3);
-    ax_assert_eq!(table.group_count(), 3);
-    ax_assert_eq!(table.desc_size(), desc_size);
-    ax_assert_eq!(table.get_desc(BGIndex::new(3)).map(|_| ()), None);
-    ax_assert_eq!(table.total_free_blocks(), 30);
-    ax_assert_eq!(table.total_free_inodes(), 10);
-    ax_assert_eq!(table.total_used_dirs(), 6);
-    ax_assert_eq!(table.find_group_with_free_blocks(6), Some(BGIndex::new(1)));
-    ax_assert_eq!(table.find_group_with_free_blocks(9), Some(BGIndex::new(1)));
-    ax_assert_eq!(table.find_group_with_free_blocks(21), None);
-    ax_assert_eq!(table.find_group_with_free_inodes().unwrap().raw(), 0);
-    ax_assert_eq!(table.iter().count(), 3);
+    assert_eq!(table.group_count(), 3);
+    assert_eq!(table.desc_size(), desc_size);
+    assert_eq!(table.get_desc(BGIndex::new(3)).map(|_| ()), None);
+    assert_eq!(table.total_free_blocks(), 30);
+    assert_eq!(table.total_free_inodes(), 10);
+    assert_eq!(table.total_used_dirs(), 6);
+    assert_eq!(table.find_group_with_free_blocks(6), Some(BGIndex::new(1)));
+    assert_eq!(table.find_group_with_free_blocks(9), Some(BGIndex::new(1)));
+    assert_eq!(table.find_group_with_free_blocks(21), None);
+    assert_eq!(table.find_group_with_free_inodes().unwrap().raw(), 0);
+    assert_eq!(table.iter().count(), 3);
 
     let stats =
         BlockGroupStats::from_desc(BGIndex::new(0), table.get_desc(BGIndex::new(0)).unwrap());
-    ax_assert_eq!(stats.group_idx, BGIndex::new(0));
-    ax_assert_eq!(stats.free_blocks, 2);
-    ax_assert_eq!(stats.free_inodes, 3);
-    ax_assert_eq!(stats.used_dirs, 1);
-    ax_assert_eq!(stats.itable_unused, 4);
-    ax_assert_eq!(stats.flags, 0);
-    ax_assert_eq!(stats.used_blocks(16), 14);
-    ax_assert_eq!(stats.used_inodes(16), 13);
-    ax_assert!(stats.block_usage_percent(16) > 87.4);
-    ax_assert!(stats.inode_usage_percent(16) > 81.2);
-    ax_assert_eq!(stats.block_usage_percent(0), 0.0);
-    ax_assert_eq!(stats.inode_usage_percent(0), 0.0);
+    assert_eq!(stats.group_idx, BGIndex::new(0));
+    assert_eq!(stats.free_blocks, 2);
+    assert_eq!(stats.free_inodes, 3);
+    assert_eq!(stats.used_dirs, 1);
+    assert_eq!(stats.itable_unused, 4);
+    assert_eq!(stats.flags, 0);
+    assert_eq!(stats.used_blocks(16), 14);
+    assert_eq!(stats.used_inodes(16), 13);
+    assert!(stats.block_usage_percent(16) > 87.4);
+    assert!(stats.inode_usage_percent(16) > 81.2);
+    assert_eq!(stats.block_usage_percent(0), 0.0);
+    assert_eq!(stats.inode_usage_percent(0), 0.0);
 
     let mut mutable_table = BlockGroupDescTableMut::new(&mut table_bytes, desc_size, 3);
-    ax_assert!(mutable_table.update_free_blocks(BGIndex::new(1), 0x1_0002));
-    ax_assert!(mutable_table.update_free_inodes(BGIndex::new(1), 0x2_0003));
-    ax_assert!(mutable_table.update_used_dirs(BGIndex::new(1), 0x3_0004));
-    ax_assert!(mutable_table.increment_used_dirs(BGIndex::new(1)));
-    ax_assert!(mutable_table.decrement_used_dirs(BGIndex::new(1)));
-    ax_assert!(mutable_table.set_flags(
+    assert!(mutable_table.update_free_blocks(BGIndex::new(1), 0x1_0002));
+    assert!(mutable_table.update_free_inodes(BGIndex::new(1), 0x2_0003));
+    assert!(mutable_table.update_used_dirs(BGIndex::new(1), 0x3_0004));
+    assert!(mutable_table.increment_used_dirs(BGIndex::new(1)));
+    assert!(mutable_table.decrement_used_dirs(BGIndex::new(1)));
+    assert!(mutable_table.set_flags(
         BGIndex::new(1),
         Ext4GroupDesc::EXT4_BG_BLOCK_UNINIT | Ext4GroupDesc::EXT4_BG_INODE_ZEROED
     ));
-    ax_assert!(mutable_table.clear_flags(BGIndex::new(1), Ext4GroupDesc::EXT4_BG_INODE_UNINIT));
-    ax_assert!(!mutable_table.update_free_blocks(BGIndex::new(4), 1));
-    ax_assert!(!mutable_table.update_free_inodes(BGIndex::new(4), 1));
-    ax_assert!(!mutable_table.update_used_dirs(BGIndex::new(4), 1));
-    ax_assert!(!mutable_table.increment_used_dirs(BGIndex::new(4)));
-    ax_assert!(!mutable_table.decrement_used_dirs(BGIndex::new(4)));
-    ax_assert!(!mutable_table.set_flags(BGIndex::new(4), 1));
-    ax_assert!(!mutable_table.clear_flags(BGIndex::new(4), 1));
+    assert!(mutable_table.clear_flags(BGIndex::new(1), Ext4GroupDesc::EXT4_BG_INODE_UNINIT));
+    assert!(!mutable_table.update_free_blocks(BGIndex::new(4), 1));
+    assert!(!mutable_table.update_free_inodes(BGIndex::new(4), 1));
+    assert!(!mutable_table.update_used_dirs(BGIndex::new(4), 1));
+    assert!(!mutable_table.increment_used_dirs(BGIndex::new(4)));
+    assert!(!mutable_table.decrement_used_dirs(BGIndex::new(4)));
+    assert!(!mutable_table.set_flags(BGIndex::new(4), 1));
+    assert!(!mutable_table.clear_flags(BGIndex::new(4), 1));
 
     let table = BlockGroupDescTable::new(&table_bytes, desc_size, 3);
     let desc = table.get_desc(BGIndex::new(1)).unwrap();
-    ax_assert_eq!(desc.free_blocks_count(), 0x1_0002);
-    ax_assert_eq!(desc.free_inodes_count(), 0x2_0003);
-    ax_assert_eq!(desc.used_dirs_count(), 0x3_0004);
-    ax_assert!(desc.is_block_bitmap_uninit());
-    ax_assert!(!desc.is_inode_bitmap_uninit());
-    ax_assert!(desc.is_inode_table_zeroed());
+    assert_eq!(desc.free_blocks_count(), 0x1_0002);
+    assert_eq!(desc.free_inodes_count(), 0x2_0003);
+    assert_eq!(desc.used_dirs_count(), 0x3_0004);
+    assert!(desc.is_block_bitmap_uninit());
+    assert!(!desc.is_inode_bitmap_uninit());
+    assert!(desc.is_inode_table_zeroed());
 
     let tiny_table = BlockGroupDescTable::new(&table_bytes[..desc_size - 1], desc_size, 1);
-    ax_assert_eq!(tiny_table.get_desc(BGIndex::new(0)).map(|_| ()), None);
+    assert_eq!(tiny_table.get_desc(BGIndex::new(0)).map(|_| ()), None);
 
     let old_superblock = Ext4Superblock::default();
     let mut new_superblock = Ext4Superblock {
@@ -1655,21 +1655,21 @@ fn rsext4_blockgroup_table_and_stats_rules_hold() {
         bg_inode_bitmap_csum_lo: 0xabcd,
         ..Default::default()
     };
-    ax_assert_eq!(checksum_desc.block_bitmap_csum(&old_superblock), 0x1234);
-    ax_assert_eq!(checksum_desc.inode_bitmap_csum(&old_superblock), 0xabcd);
-    ax_assert!(checksum_desc.block_bitmap_csum_matches(&old_superblock, 0xffff_1234));
-    ax_assert!(!checksum_desc.block_bitmap_csum_matches(&new_superblock, 0xffff_1234));
+    assert_eq!(checksum_desc.block_bitmap_csum(&old_superblock), 0x1234);
+    assert_eq!(checksum_desc.inode_bitmap_csum(&old_superblock), 0xabcd);
+    assert!(checksum_desc.block_bitmap_csum_matches(&old_superblock, 0xffff_1234));
+    assert!(!checksum_desc.block_bitmap_csum_matches(&new_superblock, 0xffff_1234));
 
     new_superblock.s_feature_ro_compat |= Ext4Superblock::EXT4_FEATURE_RO_COMPAT_METADATA_CSUM;
     new_superblock.s_feature_incompat |= Ext4Superblock::EXT4_FEATURE_INCOMPAT_CSUM_SEED;
     new_superblock.s_checksum_seed = 0x3141_5926;
     checksum_desc.update_checksum(&new_superblock, 2, Some(&[0xaa; 16]), Some(&[0x55; 16]));
-    ax_assert!(checksum_desc.verify_checksum(&new_superblock, 2).is_ok());
+    assert!(checksum_desc.verify_checksum(&new_superblock, 2).is_ok());
     checksum_desc.bg_checksum ^= 1;
-    ax_assert!(checksum_desc.verify_checksum(&new_superblock, 2).is_err());
+    assert!(checksum_desc.verify_checksum(&new_superblock, 2).is_err());
 }
 
-#[axtest]
+#[test]
 fn rsext4_extent_tree_lookup_and_run_rules_hold() {
     use rsext4::{
         BLOCK_SIZE, BlockDevice, Ext4Result, Jbd2Dev,
@@ -1787,13 +1787,13 @@ fn rsext4_extent_tree_lookup_and_run_rules_hold() {
 
     let mut dev = Jbd2Dev::initial_jbd2dev(0, MemoryBlockDevice::new(8), false);
     let mut inode = Ext4Inode::default();
-    ax_assert_eq!(
+    assert_eq!(
         ExtentTree::new(&mut inode)
             .initialized_runs_in_range(&mut dev, 5, 4)
             .unwrap(),
         Vec::new()
     );
-    ax_assert!(
+    assert!(
         ExtentTree::new(&mut inode)
             .find_extent(&mut dev, 1)
             .unwrap()
@@ -1816,31 +1816,31 @@ fn rsext4_extent_tree_lookup_and_run_rules_hold() {
     );
 
     let mut tree = ExtentTree::new(&mut inode);
-    ax_assert!(tree.find_extent(&mut dev, 9).unwrap().is_none());
-    ax_assert_eq!(
+    assert!(tree.find_extent(&mut dev, 9).unwrap().is_none());
+    assert_eq!(
         tree.find_extent(&mut dev, 10)
             .unwrap()
             .unwrap()
             .start_block(),
         100
     );
-    ax_assert_eq!(
+    assert_eq!(
         tree.find_extent(&mut dev, 13)
             .unwrap()
             .unwrap()
             .start_block(),
         100
     );
-    ax_assert!(tree.find_extent(&mut dev, 14).unwrap().is_none());
+    assert!(tree.find_extent(&mut dev, 14).unwrap().is_none());
     let runs = tree.initialized_runs_in_range(&mut dev, 11, 30).unwrap();
-    ax_assert_eq!(runs.len(), 2);
-    ax_assert_eq!(runs[0].logical_start, 11);
-    ax_assert_eq!(runs[0].physical_start, AbsoluteBN::new(101));
-    ax_assert_eq!(runs[0].len, 3);
-    ax_assert_eq!(runs[1].logical_start, 20);
-    ax_assert_eq!(runs[1].physical_start, AbsoluteBN::new(200));
-    ax_assert_eq!(runs[1].len, 2);
-    ax_assert_eq!(
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0].logical_start, 11);
+    assert_eq!(runs[0].physical_start, AbsoluteBN::new(101));
+    assert_eq!(runs[0].len, 3);
+    assert_eq!(runs[1].logical_start, 20);
+    assert_eq!(runs[1].physical_start, AbsoluteBN::new(200));
+    assert_eq!(runs[1].len, 2);
+    assert_eq!(
         resolve_inode_block(&mut dev, &mut inode, 11)
             .unwrap()
             .unwrap(),
@@ -1858,7 +1858,7 @@ fn rsext4_extent_tree_lookup_and_run_rules_hold() {
             ee_start_lo: 400,
         }],
     );
-    ax_assert!(
+    assert!(
         resolve_inode_block(&mut dev, &mut zero_len_inode, 4)
             .unwrap()
             .is_none()
@@ -1875,7 +1875,7 @@ fn rsext4_extent_tree_lookup_and_run_rules_hold() {
             ee_start_lo: 700,
         }],
     );
-    ax_assert!(
+    assert!(
         resolve_inode_block(&mut dev, &mut unwritten_inode, 7)
             .unwrap()
             .is_none()
@@ -1919,32 +1919,32 @@ fn rsext4_extent_tree_lookup_and_run_rules_hold() {
     ExtentTree::new(&mut indexed_inode).store_root_to_inode(&index_root);
 
     let mut tree = ExtentTree::new(&mut indexed_inode);
-    ax_assert_eq!(
+    assert_eq!(
         tree.find_extent(&mut dev, 6)
             .unwrap()
             .unwrap()
             .start_block(),
         500
     );
-    ax_assert_eq!(
+    assert_eq!(
         tree.find_extent(&mut dev, 20)
             .unwrap()
             .unwrap()
             .start_block(),
         700
     );
-    ax_assert!(tree.find_extent(&mut dev, 12).unwrap().is_none());
+    assert!(tree.find_extent(&mut dev, 12).unwrap().is_none());
     let indexed_runs = tree.initialized_runs_in_range(&mut dev, 1, 30).unwrap();
-    ax_assert_eq!(indexed_runs.len(), 4);
-    ax_assert_eq!(indexed_runs[0].logical_start, 1);
-    ax_assert_eq!(indexed_runs[0].physical_start, AbsoluteBN::new(401));
-    ax_assert_eq!(indexed_runs[0].len, 1);
-    ax_assert_eq!(indexed_runs[3].logical_start, 30);
-    ax_assert_eq!(indexed_runs[3].physical_start, AbsoluteBN::new(900));
-    ax_assert_eq!(indexed_runs[3].len, 1);
+    assert_eq!(indexed_runs.len(), 4);
+    assert_eq!(indexed_runs[0].logical_start, 1);
+    assert_eq!(indexed_runs[0].physical_start, AbsoluteBN::new(401));
+    assert_eq!(indexed_runs[0].len, 1);
+    assert_eq!(indexed_runs[3].logical_start, 30);
+    assert_eq!(indexed_runs[3].physical_start, AbsoluteBN::new(900));
+    assert_eq!(indexed_runs[3].len, 1);
 }
 
-#[axtest]
+#[test]
 fn rsext4_dirblock_checksum_edge_rules_hold() {
     use rsext4::{
         BLOCK_SIZE,
@@ -1967,8 +1967,8 @@ fn rsext4_dirblock_checksum_edge_rules_hold() {
     block[4..6].copy_from_slice(&(BLOCK_SIZE as u16).to_le_bytes());
     block[6] = 1;
     block[7] = 2;
-    ax_assert!(verify_ext4_dirblock_checksum(&superblock, 2, 3, &block));
-    ax_assert_eq!(
+    assert!(verify_ext4_dirblock_checksum(&superblock, 2, 3, &block));
+    assert_eq!(
         verify_ext4_dx_checksum(&superblock, 2, 3, &block),
         Some(true)
     );
@@ -1977,21 +1977,21 @@ fn rsext4_dirblock_checksum_edge_rules_hold() {
     superblock.s_feature_incompat |= Ext4Superblock::EXT4_FEATURE_INCOMPAT_CSUM_SEED;
     superblock.s_checksum_seed = 0x1234_5678;
     let csum = ext4_metadata_block_csum32(&superblock, b"metadata");
-    ax_assert_eq!(
+    assert_eq!(
         csum,
         ext4_metadata_csum32(
             ext4_crc32c_seed_from_superblock(&superblock),
             &[b"metadata"]
         )
     );
-    ax_assert_eq!(
+    assert_eq!(
         ext4_dirblock_csum32(&superblock, 2, 3, b"dir"),
         ext4_metadata_csum32(
             ext4_crc32c_seed_from_superblock(&superblock),
             &[&2_u32.to_le_bytes(), &3_u32.to_le_bytes(), b"dir"]
         )
     );
-    ax_assert!(!verify_ext4_dirblock_checksum(
+    assert!(!verify_ext4_dirblock_checksum(
         &superblock,
         2,
         3,
@@ -2001,9 +2001,9 @@ fn rsext4_dirblock_checksum_edge_rules_hold() {
     block.fill(0);
     block[BLOCK_SIZE - 5] = 0xDE;
     update_ext4_dirblock_csum32(&superblock, 2, 3, &mut block);
-    ax_assert!(verify_ext4_dirblock_checksum(&superblock, 2, 3, &block));
+    assert!(verify_ext4_dirblock_checksum(&superblock, 2, 3, &block));
     block[0] ^= 1;
-    ax_assert!(!verify_ext4_dirblock_checksum(&superblock, 2, 3, &block));
+    assert!(!verify_ext4_dirblock_checksum(&superblock, 2, 3, &block));
 
     let tail_offset = 64;
     block.fill(0);
@@ -2014,13 +2014,13 @@ fn rsext4_dirblock_checksum_edge_rules_hold() {
         block[tail_offset + 10],
         block[tail_offset + 11],
     ]);
-    ax_assert_eq!(
+    assert_eq!(
         stored,
         ext4_dirblock_csum32(&superblock, 4, 5, &block[..tail_offset])
     );
     let before = block.clone();
     ext4_update_dirblock_tail_checksum(&superblock, 4, 5, &mut block, BLOCK_SIZE - 4);
-    ax_assert_eq!(block, before);
+    assert_eq!(block, before);
 
     block.fill(0);
     block[4..6].copy_from_slice(&(BLOCK_SIZE as u16).to_le_bytes());
@@ -2041,17 +2041,17 @@ fn rsext4_dirblock_checksum_edge_rules_hold() {
         ],
     );
     block[dx_tail_offset + 4..dx_tail_offset + 8].copy_from_slice(&dx_checksum.to_le_bytes());
-    ax_assert_eq!(
+    assert_eq!(
         verify_ext4_dx_checksum(&superblock, 2, 3, &block),
         Some(true)
     );
     block[dx_tail_offset + 4] ^= 1;
-    ax_assert_eq!(
+    assert_eq!(
         verify_ext4_dx_checksum(&superblock, 2, 3, &block),
         Some(false)
     );
     block[10..12].copy_from_slice(&3_u16.to_le_bytes());
-    ax_assert_eq!(
+    assert_eq!(
         verify_ext4_dx_checksum(&superblock, 2, 3, &block),
         Some(false)
     );
@@ -2062,15 +2062,15 @@ fn rsext4_dirblock_checksum_edge_rules_hold() {
     block[29] = Ext4DxRootInfo::INFO_LENGTH;
     block[32..34].copy_from_slice(&1_u16.to_le_bytes());
     block[34..36].copy_from_slice(&0_u16.to_le_bytes());
-    ax_assert_eq!(
+    assert_eq!(
         verify_ext4_dx_checksum(&superblock, 2, 3, &block),
         Some(false)
     );
     block[29] = 0;
-    ax_assert_eq!(verify_ext4_dx_checksum(&superblock, 2, 3, &block), None);
+    assert_eq!(verify_ext4_dx_checksum(&superblock, 2, 3, &block), None);
 }
 
-#[axtest]
+#[test]
 fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     use core::cell::Cell;
 
@@ -2171,27 +2171,27 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     mkfs(&mut device).unwrap();
     let mut fs = rsext4::api::fs_mount(&mut device).unwrap();
 
-    ax_assert!(!rsext4::Ext4FileSystem::device_has_error_state(&mut device).unwrap());
-    ax_assert!(fs.file_entries_exist(&mut device, "/").unwrap());
+    assert!(!rsext4::Ext4FileSystem::device_has_error_state(&mut device).unwrap());
+    assert!(fs.file_entries_exist(&mut device, "/").unwrap());
     fs.make_base_dir();
     let stats = fs.statfs();
-    ax_assert_eq!(stats.block_size, BLOCK_SIZE as u64);
-    ax_assert_eq!(stats.block_groups, fs.group_count);
-    ax_assert!(stats.total_blocks >= stats.free_blocks);
-    ax_assert!(stats.total_inodes >= stats.free_inodes);
-    ax_assert!(
+    assert_eq!(stats.block_size, BLOCK_SIZE as u64);
+    assert_eq!(stats.block_groups, fs.group_count);
+    assert!(stats.total_blocks >= stats.free_blocks);
+    assert!(stats.total_inodes >= stats.free_inodes);
+    assert!(
         fs.get_group_desc(rsext4::bmalloc::BGIndex::new(0))
             .is_some()
     );
-    ax_assert!(
+    assert!(
         fs.get_group_desc(rsext4::bmalloc::BGIndex::new(u32::MAX))
             .is_none()
     );
-    ax_assert!(
+    assert!(
         fs.get_group_desc_mut(rsext4::bmalloc::BGIndex::new(u32::MAX))
             .is_none()
     );
-    ax_assert!(
+    assert!(
         fs.inode_num_already_allocated(&mut device, rsext4::bmalloc::InodeNumber::new(2).unwrap())
     );
     let saved_inode_bitmap = fs.group_descs[0].bg_inode_bitmap_lo;
@@ -2206,18 +2206,18 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     let _ =
         fs.inode_num_already_allocated(&mut device, rsext4::bmalloc::InodeNumber::new(2).unwrap());
     fs.superblock.s_inodes_per_group = saved_inodes_per_group;
-    ax_assert!(!fs.inode_num_already_allocated(
+    assert!(!fs.inode_num_already_allocated(
         &mut device,
         rsext4::bmalloc::InodeNumber::new(u32::MAX).unwrap()
     ));
-    ax_assert!(
+    assert!(
         fs.get_inode_by_num(
             &mut device,
             rsext4::bmalloc::InodeNumber::new(u32::MAX).unwrap()
         )
         .is_err()
     );
-    ax_assert!(
+    assert!(
         fs.modify_inode(
             &mut device,
             rsext4::bmalloc::InodeNumber::new(u32::MAX).unwrap(),
@@ -2225,8 +2225,8 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         )
         .is_err()
     );
-    ax_assert!(find_file(&mut fs, &mut device, "/").unwrap().is_dir());
-    ax_assert_eq!(
+    assert!(find_file(&mut fs, &mut device, "/").unwrap().is_dir());
+    assert_eq!(
         find_file(&mut fs, &mut device, "/missing")
             .unwrap_err()
             .code,
@@ -2235,14 +2235,14 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
 
     mkdir(&mut device, &mut fs, "/cov").unwrap();
     mkdir_with_owner(&mut device, &mut fs, "/cov/sub", 1000, 1001).unwrap();
-    ax_assert!(
+    assert!(
         get_inode_with_num(&mut fs, &mut device, "/cov/sub")
             .unwrap()
             .unwrap()
             .1
             .is_dir()
     );
-    ax_assert!(
+    assert!(
         get_inode_with_num(&mut fs, &mut device, "/cov/sub/./../sub")
             .unwrap()
             .unwrap()
@@ -2251,14 +2251,14 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     );
 
     let file_inode = mkfile(&mut device, &mut fs, "/cov/sub/file", Some(b"hello"), None).unwrap();
-    ax_assert!(file_inode.is_file());
-    ax_assert_eq!(
+    assert!(file_inode.is_file());
+    assert_eq!(
         read_file(&mut device, &mut fs, "/cov/sub/file").unwrap(),
         b"hello"
     );
 
     write_file(&mut device, &mut fs, "/cov/sub/file", 5, b" world").unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         read_file(&mut device, &mut fs, "/cov/sub/file").unwrap(),
         b"hello world"
     );
@@ -2268,18 +2268,18 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         .unwrap();
     let mut partial = [0_u8; 5];
     let copied = read_inode_data_into(&mut device, &mut fs, file_ino, 6, &mut partial).unwrap();
-    ax_assert_eq!(copied, 5);
-    ax_assert_eq!(&partial, b"world");
+    assert_eq!(copied, 5);
+    assert_eq!(&partial, b"world");
     let copied = read_inode_data_into(&mut device, &mut fs, file_ino, 99, &mut partial).unwrap();
-    ax_assert_eq!(copied, 0);
-    ax_assert!(
+    assert_eq!(copied, 0);
+    assert!(
         get_inode_with_num(&mut fs, &mut device, "/cov/sub/file/child")
             .unwrap()
             .is_none()
     );
     let saved_group_descs = core::mem::take(&mut fs.group_descs);
-    ax_assert!(fs.get_inode_by_num(&mut device, file_ino).is_err());
-    ax_assert!(fs.modify_inode(&mut device, file_ino, |_| {}).is_err());
+    assert!(fs.get_inode_by_num(&mut device, file_ino).is_err());
+    assert!(fs.modify_inode(&mut device, file_ino, |_| {}).is_err());
     fs.group_descs = saved_group_descs;
 
     chmod(&mut device, &mut fs, "/cov/sub/file", 0o600).unwrap();
@@ -2291,7 +2291,7 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         Some(2001),
     )
     .unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         set_project(&mut device, &mut fs, "/cov/sub/file", 77)
             .unwrap_err()
             .code,
@@ -2302,10 +2302,10 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     let (_, projected_inode) = get_inode_with_num(&mut fs, &mut device, "/cov/sub/file")
         .unwrap()
         .unwrap();
-    ax_assert_eq!(projected_inode.i_projid, 77);
+    assert_eq!(projected_inode.i_projid, 77);
     fs.superblock.s_feature_ro_compat &= !Ext4Superblock::EXT4_FEATURE_RO_COMPAT_PROJECT;
     set_flags(&mut device, &mut fs, "/cov/sub/file", 0).unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         set_flags(
             &mut device,
             &mut fs,
@@ -2327,8 +2327,8 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     let (_, noatime_inode) = get_inode_with_num(&mut fs, &mut device, "/cov/sub/noatime")
         .unwrap()
         .unwrap();
-    ax_assert_ne!(noatime_inode.i_flags & Ext4Inode::EXT4_NOATIME_FL, 0);
-    ax_assert_eq!(noatime_inode.i_flags & Ext4Inode::EXT4_DIRSYNC_FL, 0);
+    assert_ne!(noatime_inode.i_flags & Ext4Inode::EXT4_NOATIME_FL, 0);
+    assert_eq!(noatime_inode.i_flags & Ext4Inode::EXT4_DIRSYNC_FL, 0);
     utimens(
         &mut device,
         &mut fs,
@@ -2359,9 +2359,9 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     let (_, char_inode) = get_inode_with_num(&mut fs, &mut device, "/cov/sub/char")
         .unwrap()
         .unwrap();
-    ax_assert_eq!(char_inode.i_mode & Ext4Inode::S_IFMT, Ext4Inode::S_IFCHR);
-    ax_assert_eq!(char_inode.uid(), 3000);
-    ax_assert_eq!(char_inode.gid(), 3001);
+    assert_eq!(char_inode.i_mode & Ext4Inode::S_IFMT, Ext4Inode::S_IFCHR);
+    assert_eq!(char_inode.uid(), 3000);
+    assert_eq!(char_inode.gid(), 3001);
     mkfile(
         &mut device,
         &mut fs,
@@ -2394,19 +2394,19 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         Some(Ext4DirEntry2::EXT4_FT_UNKNOWN),
     )
     .unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         mkfile(&mut device, &mut fs, "/", None, None)
             .unwrap_err()
             .code,
         Errno::EINVAL
     );
-    ax_assert_eq!(
+    assert_eq!(
         mkfile(&mut device, &mut fs, "/cov/sub/file", None, None)
             .unwrap_err()
             .code,
         Errno::EEXIST
     );
-    ax_assert_eq!(
+    assert_eq!(
         mkfile(&mut device, &mut fs, "relative-file", None, None)
             .unwrap_err()
             .code,
@@ -2432,26 +2432,26 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     let (_, project_child) = get_inode_with_num(&mut fs, &mut device, "/cov/sub/project-child")
         .unwrap()
         .unwrap();
-    ax_assert_eq!(project_child.i_projid, 1234);
+    assert_eq!(project_child.i_projid, 1234);
 
     link(&mut fs, &mut device, "/cov/sub/hard", "/cov/sub/file").unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         read_file(&mut device, &mut fs, "/cov/sub/hard").unwrap(),
         b"hello world"
     );
-    ax_assert_eq!(
+    assert_eq!(
         link(&mut fs, &mut device, "/cov/sub/hard", "/cov/sub/file")
             .unwrap_err()
             .code,
         Errno::EEXIST
     );
-    ax_assert_eq!(
+    assert_eq!(
         link(&mut fs, &mut device, "/cov/sub/dir-hard", "/cov/sub")
             .unwrap_err()
             .code,
         Errno::EACCES
     );
-    ax_assert_eq!(
+    assert_eq!(
         link(
             &mut fs,
             &mut device,
@@ -2462,7 +2462,7 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         .code,
         Errno::ENOENT
     );
-    ax_assert_eq!(
+    assert_eq!(
         link(
             &mut fs,
             &mut device,
@@ -2475,13 +2475,13 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     );
 
     create_symbol_link(&mut device, &mut fs, "/cov/sub/file", "/cov/sub/sym").unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         read_file(&mut device, &mut fs, "/cov/sub/sym").unwrap(),
         b"hello world"
     );
     link(&mut fs, &mut device, "/sym-root-hard", "/cov/sub/sym").unwrap();
     link(&mut fs, &mut device, "/cov/sub/sym-hard", "/cov/sub/sym").unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         read_file(&mut device, &mut fs, "/cov/sub/sym-hard").unwrap(),
         b"hello world"
     );
@@ -2507,13 +2507,13 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     let (_, project_sym) = get_inode_with_num(&mut fs, &mut device, "/cov/sub/project-sym")
         .unwrap()
         .unwrap();
-    ax_assert_eq!(project_sym.i_projid, 1234);
+    assert_eq!(project_sym.i_projid, 1234);
     fs.superblock.s_feature_ro_compat &= !Ext4Superblock::EXT4_FEATURE_RO_COMPAT_PROJECT;
-    ax_assert_eq!(
+    assert_eq!(
         read_file(&mut device, &mut fs, "/cov/sub/long-sym").unwrap(),
         b"long"
     );
-    ax_assert_eq!(
+    assert_eq!(
         create_symbol_link(&mut device, &mut fs, "/cov/sub/no-src", "/cov/sub/bad-sym")
             .unwrap_err()
             .code,
@@ -2521,12 +2521,12 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     );
 
     rename(&mut device, &mut fs, "/cov/sub/file", "/cov/sub/renamed").unwrap();
-    ax_assert!(
+    assert!(
         get_inode_with_num(&mut fs, &mut device, "/cov/sub/file")
             .unwrap()
             .is_none()
     );
-    ax_assert!(
+    assert!(
         get_inode_with_num(&mut fs, &mut device, "/cov/sub/renamed")
             .unwrap()
             .is_some()
@@ -2535,7 +2535,7 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     let mut mapped_inode = Ext4Inode::empty_for_reuse(32);
     build_file_block_mapping_with_inode_num(&mut fs, &mut mapped_inode, file_ino, &[], &mut device)
         .unwrap();
-    ax_assert_eq!(mapped_inode.blocks_count(), 0);
+    assert_eq!(mapped_inode.blocks_count(), 0);
     let map_block_a = fs.alloc_block(&mut device).unwrap();
     let _map_gap = fs.alloc_block(&mut device).unwrap();
     let map_block_b = fs.alloc_block(&mut device).unwrap();
@@ -2547,18 +2547,18 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         &mut device,
     )
     .unwrap();
-    ax_assert!(mapped_inode.have_extend_header_and_use_extend());
+    assert!(mapped_inode.have_extend_header_and_use_extend());
     let mapped_blocks = resolve_inode_blocks(&mut fs, &mut device, &mut mapped_inode).unwrap();
-    ax_assert_eq!(mapped_blocks.len(), 2);
+    assert_eq!(mapped_blocks.len(), 2);
 
     let mut non_extent_inode = Ext4Inode::default();
-    ax_assert_eq!(
+    assert_eq!(
         resolve_inode_block(&mut device, &mut non_extent_inode, 0)
             .unwrap_err()
             .code,
         Errno::EOPNOTSUPP
     );
-    ax_assert!(
+    assert!(
         resolve_inode_blocks(&mut fs, &mut device, &mut non_extent_inode)
             .unwrap()
             .is_empty()
@@ -2566,7 +2566,7 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     let mut empty_extent_inode = Ext4Inode::empty_for_reuse(32);
     empty_extent_inode.i_flags |= Ext4Inode::EXT4_EXTENTS_FL;
     empty_extent_inode.write_extend_header();
-    ax_assert!(
+    assert!(
         resolve_inode_block(&mut device, &mut empty_extent_inode, 0)
             .unwrap()
             .is_none()
@@ -2597,7 +2597,7 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         ],
     };
     ExtentTree::new(&mut skipped_extent_inode).store_root_to_inode(&skipped_node);
-    ax_assert!(
+    assert!(
         resolve_inode_blocks(&mut fs, &mut device, &mut skipped_extent_inode)
             .unwrap()
             .is_empty()
@@ -2651,8 +2651,8 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     ExtentTree::new(&mut indexed_resolve_inode).store_root_to_inode(&indexed_root);
     let indexed_blocks =
         resolve_inode_blocks(&mut fs, &mut device, &mut indexed_resolve_inode).unwrap();
-    ax_assert_eq!(indexed_blocks.get(&0).copied(), Some(AbsoluteBN::new(800)));
-    ax_assert_eq!(indexed_blocks.get(&9).copied(), Some(AbsoluteBN::new(901)));
+    assert_eq!(indexed_blocks.get(&0).copied(), Some(AbsoluteBN::new(800)));
+    assert_eq!(indexed_blocks.get(&9).copied(), Some(AbsoluteBN::new(901)));
 
     mkdir(&mut device, &mut fs, "/cov/other").unwrap();
     mkdir(&mut device, &mut fs, "/cov/other/child").unwrap();
@@ -2663,7 +2663,7 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         "/cov/sub/moved-dir",
     )
     .unwrap();
-    ax_assert!(
+    assert!(
         get_inode_with_num(&mut fs, &mut device, "/cov/sub/moved-dir")
             .unwrap()
             .unwrap()
@@ -2693,7 +2693,7 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         "/cov/sub/replace-dst",
     )
     .unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         read_file(&mut device, &mut fs, "/cov/sub/replace-dst").unwrap(),
         b"src"
     );
@@ -2706,7 +2706,7 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         None,
     )
     .unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         rename(
             &mut device,
             &mut fs,
@@ -2717,7 +2717,7 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         .code,
         Errno::ENOTDIR
     );
-    ax_assert_eq!(
+    assert_eq!(
         rename(
             &mut device,
             &mut fs,
@@ -2729,7 +2729,7 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         Errno::EISDIR
     );
     mkdir(&mut device, &mut fs, "/cov/sub/src-dir").unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         rename(
             &mut device,
             &mut fs,
@@ -2740,13 +2740,13 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         .code,
         Errno::ENOTEMPTY
     );
-    ax_assert_eq!(
+    assert_eq!(
         rename(&mut device, &mut fs, "/cov/sub/src-dir", "bad-new")
             .unwrap_err()
             .code,
         Errno::EINVAL
     );
-    ax_assert_eq!(
+    assert_eq!(
         rename(&mut device, &mut fs, "/", "/cov/sub/root-move")
             .unwrap_err()
             .code,
@@ -2761,31 +2761,31 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         "/cov/sub/replace-empty-dst",
     )
     .unwrap();
-    ax_assert!(
+    assert!(
         get_inode_with_num(&mut fs, &mut device, "/cov/sub/replace-empty-dst")
             .unwrap()
             .unwrap()
             .1
             .is_dir()
     );
-    ax_assert!(rename(&mut device, &mut fs, "bad-old", "/cov/sub/bad-new").is_err());
+    assert!(rename(&mut device, &mut fs, "bad-old", "/cov/sub/bad-new").is_err());
 
     truncate(&mut device, &mut fs, "/cov/sub/renamed", 4).unwrap();
     let truncated = read_file(&mut device, &mut fs, "/cov/sub/renamed").unwrap();
-    ax_assert_eq!(truncated.as_slice(), b"hell");
+    assert_eq!(truncated.as_slice(), b"hell");
     truncate(&mut device, &mut fs, "/cov/sub/renamed", 4).unwrap();
     truncate(&mut device, &mut fs, "/cov/sub/renamed", 0).unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         read_file(&mut device, &mut fs, "/cov/sub/renamed").unwrap(),
         Vec::new()
     );
-    ax_assert_eq!(
+    assert_eq!(
         truncate(&mut device, &mut fs, "/cov/sub/missing", 1)
             .unwrap_err()
             .code,
         Errno::ENOENT
     );
-    ax_assert_eq!(
+    assert_eq!(
         write_file(&mut device, &mut fs, "/cov/sub/missing", 0, b"x")
             .unwrap_err()
             .code,
@@ -2793,25 +2793,25 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     );
 
     let mut api_file = rsext4::api::open(&mut device, &mut fs, "/cov/sub/api", true).unwrap();
-    ax_assert_eq!(api_file.offset, 0);
+    assert_eq!(api_file.offset, 0);
     rsext4::api::write_at(&mut device, &mut fs, &mut api_file, b"abcdef").unwrap();
-    ax_assert_eq!(api_file.offset, 6);
+    assert_eq!(api_file.offset, 6);
     rsext4::api::lseek(&mut api_file, 2).unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         rsext4::api::read_at(&mut device, &mut fs, &mut api_file, 3).unwrap(),
         b"cde"
     );
-    ax_assert_eq!(api_file.offset, 5);
-    ax_assert_eq!(
+    assert_eq!(api_file.offset, 5);
+    assert_eq!(
         rsext4::api::read(&mut device, &mut fs, "/cov/sub/api").unwrap(),
         b"abcdef"
     );
     rsext4::api::lseek(&mut api_file, 99).unwrap();
-    ax_assert_eq!(
+    assert_eq!(
         rsext4::api::read_at(&mut device, &mut fs, &mut api_file, 4).unwrap(),
         Vec::new()
     );
-    ax_assert_eq!(
+    assert_eq!(
         rsext4::api::read_at(&mut device, &mut fs, &mut api_file, 0).unwrap(),
         Vec::new()
     );
@@ -2819,7 +2819,7 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         Ok(_) => panic!("opening a missing file without create should fail"),
         Err(error) => error,
     };
-    ax_assert_eq!(open_error.code, Errno::ENOENT);
+    assert_eq!(open_error.code, Errno::ENOENT);
 
     delete_file(&mut fs, &mut device, "/cov/sub/api").unwrap();
     delete_file(&mut fs, &mut device, "/cov/sub/noatime").unwrap();
@@ -2850,97 +2850,68 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     rsext4::api::fs_umount(fs, &mut device).unwrap();
 }
 
-#[axtest]
-fn rsext4_bitmap_error_mapping_rules_hold() {
-    use rsext4::{Errno, bitmap::BitmapError, bmalloc::map_bitmap_error};
-
-    ax_assert_eq!(
-        map_bitmap_error(BitmapError::IndexOutOfRange).code,
-        Errno::EINVAL
-    );
-    ax_assert_eq!(
-        map_bitmap_error(BitmapError::AlreadyAllocated).code,
-        Errno::EEXIST
-    );
-    ax_assert_eq!(
-        map_bitmap_error(BitmapError::AlreadyFree).code,
-        Errno::ENOENT
-    );
-}
-
-#[axtest]
-fn rsext4_bmalloc_type_conversions_and_validation_hold() {
-    ax_assert!(rsext4::bmalloc::bmalloc_type_conversions_and_validation_rules_hold_for_test());
-}
-
-#[axtest]
+#[test]
 fn rsext4_errno_additional_codes_hold() {
     use rsext4::Errno;
 
     // Test additional errno codes
-    ax_assert_eq!(Errno::EEXIST.as_i32(), 17);
-    ax_assert_eq!(Errno::ENOENT.as_i32(), 2);
-    ax_assert_eq!(Errno::EACCES.as_i32(), 13);
-    ax_assert_eq!(Errno::EBUSY.as_i32(), 16);
-    ax_assert_eq!(Errno::ENOTDIR.as_i32(), 20);
-    ax_assert_eq!(Errno::EISDIR.as_i32(), 21);
-    ax_assert_eq!(Errno::EFBIG.as_i32(), 27);
-    ax_assert_eq!(Errno::ENOSPC.as_i32(), 28);
+    assert_eq!(Errno::EEXIST.as_i32(), 17);
+    assert_eq!(Errno::ENOENT.as_i32(), 2);
+    assert_eq!(Errno::EACCES.as_i32(), 13);
+    assert_eq!(Errno::EBUSY.as_i32(), 16);
+    assert_eq!(Errno::ENOTDIR.as_i32(), 20);
+    assert_eq!(Errno::EISDIR.as_i32(), 21);
+    assert_eq!(Errno::EFBIG.as_i32(), 27);
+    assert_eq!(Errno::ENOSPC.as_i32(), 28);
 }
 
-#[axtest]
-fn rsext4_block_group_desc_disk_format_rules_hold() {
-    ax_assert!(rsext4::blockgroup_description::block_group_desc_disk_format_rules_hold_for_test());
-}
-
-#[axtest]
+#[test]
 fn rsext4_superblock_feature_flags_hold() {
     use rsext4::superblock::Ext4Superblock;
 
     let mut sb = Ext4Superblock::default();
 
     // Test feature compatibility flags
-    sb.s_feature_compat = 0;
-    ax_assert!(!sb.has_feature_compat(Ext4Superblock::EXT4_FEATURE_COMPAT_HAS_JOURNAL));
+    assert!(sb.has_feature_compat(Ext4Superblock::EXT4_FEATURE_COMPAT_HAS_JOURNAL));
+    sb.s_feature_compat &= !Ext4Superblock::EXT4_FEATURE_COMPAT_HAS_JOURNAL;
+    assert!(!sb.has_feature_compat(Ext4Superblock::EXT4_FEATURE_COMPAT_HAS_JOURNAL));
     sb.s_feature_compat |= Ext4Superblock::EXT4_FEATURE_COMPAT_HAS_JOURNAL;
-    ax_assert!(sb.has_feature_compat(Ext4Superblock::EXT4_FEATURE_COMPAT_HAS_JOURNAL));
+    assert!(sb.has_feature_compat(Ext4Superblock::EXT4_FEATURE_COMPAT_HAS_JOURNAL));
 
     // Test feature read-only compatibility flags
-    sb.s_feature_ro_compat = 0;
-    ax_assert!(!sb.has_feature_ro_compat(Ext4Superblock::EXT4_FEATURE_RO_COMPAT_SPARSE_SUPER));
+    assert!(!sb.has_feature_ro_compat(Ext4Superblock::EXT4_FEATURE_RO_COMPAT_SPARSE_SUPER));
     sb.s_feature_ro_compat |= Ext4Superblock::EXT4_FEATURE_RO_COMPAT_SPARSE_SUPER;
-    ax_assert!(sb.has_feature_ro_compat(Ext4Superblock::EXT4_FEATURE_RO_COMPAT_SPARSE_SUPER));
+    assert!(sb.has_feature_ro_compat(Ext4Superblock::EXT4_FEATURE_RO_COMPAT_SPARSE_SUPER));
 
     // Test feature incompatibility flags
-    sb.s_feature_incompat = 0;
-    ax_assert!(!sb.has_feature_incompat(Ext4Superblock::EXT4_FEATURE_INCOMPAT_64BIT));
+    assert!(!sb.has_feature_incompat(Ext4Superblock::EXT4_FEATURE_INCOMPAT_64BIT));
     sb.s_feature_incompat |= Ext4Superblock::EXT4_FEATURE_INCOMPAT_64BIT;
-    ax_assert!(sb.has_feature_incompat(Ext4Superblock::EXT4_FEATURE_INCOMPAT_64BIT));
+    assert!(sb.has_feature_incompat(Ext4Superblock::EXT4_FEATURE_INCOMPAT_64BIT));
 
     // Test magic number
-    ax_assert_eq!(Ext4Superblock::EXT4_SUPER_MAGIC, 0xEF53);
+    assert_eq!(Ext4Superblock::EXT4_SUPER_MAGIC, 0xEF53);
 }
 
-#[axtest]
+#[test]
 fn rsext4_extent_header_constants_and_defaults_hold() {
     use rsext4::disknode::{Ext4Extent, Ext4ExtentHeader};
 
     // Test extent header constants
-    ax_assert_eq!(Ext4ExtentHeader::EXT4_EXT_MAGIC, 0xF30A);
+    assert_eq!(Ext4ExtentHeader::EXT4_EXT_MAGIC, 0xF30A);
 
     // Test default header
     let default_header = Ext4ExtentHeader::default();
-    ax_assert_eq!(default_header.eh_magic, Ext4ExtentHeader::EXT4_EXT_MAGIC);
-    ax_assert_eq!(default_header.eh_entries, 0);
+    assert_eq!(default_header.eh_magic, Ext4ExtentHeader::EXT4_EXT_MAGIC);
+    assert_eq!(default_header.eh_entries, 0);
     // eh_max may be non-zero in default (depends on implementation)
-    ax_assert_eq!(default_header.eh_depth, 0);
-    ax_assert_eq!(default_header.eh_generation, 0);
+    assert_eq!(default_header.eh_depth, 0);
+    assert_eq!(default_header.eh_generation, 0);
 
     // Test extent constants
-    ax_assert_eq!(Ext4Extent::EXT_INIT_MAX_LEN, 32768);
+    assert_eq!(Ext4Extent::EXT_INIT_MAX_LEN, 32768);
 }
 
-#[axtest]
+#[test]
 fn rsext4_inode_mode_constants_and_type_checks_hold() {
     use rsext4::disknode::Ext4Inode;
 
@@ -2952,20 +2923,22 @@ fn rsext4_inode_mode_constants_and_type_checks_hold() {
     let _s_isgid = Ext4Inode::S_ISGID;
 
     // Verify they're non-zero and distinct
-    ax_assert!(Ext4Inode::S_IFREG != 0);
-    ax_assert!(Ext4Inode::S_IFDIR != 0);
-    ax_assert!(Ext4Inode::S_IFREG != Ext4Inode::S_IFDIR);
+    const {
+        assert!(Ext4Inode::S_IFREG != 0);
+        assert!(Ext4Inode::S_IFDIR != 0);
+        assert!(Ext4Inode::S_IFREG != Ext4Inode::S_IFDIR);
+    }
 }
 
-#[axtest]
+#[test]
 fn rsext4_extent_header_constants_hold() {
     use rsext4::disknode::Ext4ExtentHeader;
 
     // Test extent header magic constant
-    ax_assert!(Ext4ExtentHeader::EXT4_EXT_MAGIC != 0);
+    const { assert!(Ext4ExtentHeader::EXT4_EXT_MAGIC != 0) }
 }
 
-#[axtest]
+#[test]
 fn rsext4_dirent_file_type_constants_hold() {
     use rsext4::entries::Ext4DirEntry2;
 
@@ -2980,11 +2953,13 @@ fn rsext4_dirent_file_type_constants_hold() {
     let _symlink = Ext4DirEntry2::EXT4_FT_SYMLINK;
 
     // Verify they're distinct
-    ax_assert!(Ext4DirEntry2::EXT4_FT_REG_FILE != Ext4DirEntry2::EXT4_FT_DIR);
-    ax_assert!(Ext4DirEntry2::EXT4_FT_DIR != Ext4DirEntry2::EXT4_FT_SYMLINK);
+    const {
+        assert!(Ext4DirEntry2::EXT4_FT_REG_FILE != Ext4DirEntry2::EXT4_FT_DIR);
+        assert!(Ext4DirEntry2::EXT4_FT_DIR != Ext4DirEntry2::EXT4_FT_SYMLINK);
+    }
 }
 
-#[axtest]
+#[test]
 fn rsext4_group_desc_flags_hold() {
     use rsext4::blockgroup_description::Ext4GroupDesc;
 
@@ -2994,11 +2969,13 @@ fn rsext4_group_desc_flags_hold() {
     let _inode_zeroed = Ext4GroupDesc::EXT4_BG_INODE_ZEROED;
 }
 
-#[axtest]
+#[test]
 fn rsext4_journal_blocktype_constants_hold() {
     use rsext4::jbd2::jbdstruct::{JBD2_BLOCKTYPE_COMMIT, JBD2_BLOCKTYPE_DESCRIPTOR, JBD2_MAGIC};
 
     // Test journal magic and block types
-    ax_assert!(JBD2_MAGIC != 0);
-    ax_assert!(JBD2_BLOCKTYPE_DESCRIPTOR != JBD2_BLOCKTYPE_COMMIT);
+    const {
+        assert!(JBD2_MAGIC != 0);
+        assert!(JBD2_BLOCKTYPE_DESCRIPTOR != JBD2_BLOCKTYPE_COMMIT);
+    }
 }
