@@ -452,7 +452,7 @@ mod tests {
     use super::*;
     use crate::disknode::Ext4Timestamp;
 
-    const TEST_INODE_SIZE: usize = 256;
+    const TEST_INODE_SIZE_BYTES: usize = 256;
 
     struct TestBlockDevice {
         data: Vec<u8>,
@@ -480,7 +480,7 @@ mod tests {
 
         fn record(&self, block: usize, offset: usize) -> &[u8] {
             let start = block * BLOCK_SIZE + offset;
-            &self.data[start..start + TEST_INODE_SIZE]
+            &self.data[start..start + TEST_INODE_SIZE_BYTES]
         }
 
         fn set_mode(&mut self, block: usize, offset: usize, mode: u16) {
@@ -590,26 +590,36 @@ mod tests {
     #[test]
     fn get_or_load_decodes_each_inode_record_once() {
         let mut device = TestBlockDevice::new(32);
-        device.set_mode(10, TEST_INODE_SIZE, 0o100644);
+        device.set_mode(10, TEST_INODE_SIZE_BYTES, 0o100644);
         let mut jbd2_dev = device_with(device);
-        let mut cache = InodeCache::new(4, TEST_INODE_SIZE);
+        let mut cache = InodeCache::new(4, TEST_INODE_SIZE_BYTES);
         let number = inode_number(2);
 
         let first = cache
-            .get_or_load(&mut jbd2_dev, number, AbsoluteBN::new(10), TEST_INODE_SIZE)
+            .get_or_load(
+                &mut jbd2_dev,
+                number,
+                AbsoluteBN::new(10),
+                TEST_INODE_SIZE_BYTES,
+            )
             .expect("load inode");
         assert_eq!(first.inode.i_mode, 0o100644);
         assert_eq!(first.raw_inode()[..2], 0o100644u16.to_le_bytes());
-        assert_eq!(first.raw_inode().len(), TEST_INODE_SIZE);
+        assert_eq!(first.raw_inode().len(), TEST_INODE_SIZE_BYTES);
         assert_eq!(first.handle().inode_num, number);
         assert_eq!(
             (first.block_num, first.offset_in_block),
-            (AbsoluteBN::new(10), TEST_INODE_SIZE)
+            (AbsoluteBN::new(10), TEST_INODE_SIZE_BYTES)
         );
         assert_eq!((first.last_access, first.generation), (1, 1));
 
         let again = cache
-            .get_or_load(&mut jbd2_dev, number, AbsoluteBN::new(10), TEST_INODE_SIZE)
+            .get_or_load(
+                &mut jbd2_dev,
+                number,
+                AbsoluteBN::new(10),
+                TEST_INODE_SIZE_BYTES,
+            )
             .expect("reuse cached inode");
         assert_eq!((again.last_access, again.generation), (2, 2));
         assert_eq!(
@@ -625,7 +635,7 @@ mod tests {
         let mut device = TestBlockDevice::new(32);
         device.set_mode(10, 0, 0o040755);
         let mut jbd2_dev = device_with(device);
-        let mut cache = InodeCache::new(4, TEST_INODE_SIZE);
+        let mut cache = InodeCache::new(4, TEST_INODE_SIZE_BYTES);
         let number = inode_number(2);
 
         let error = cache
@@ -654,13 +664,19 @@ mod tests {
     fn modify_by_handle_writes_record_in_place_on_flush() {
         let mut device = TestBlockDevice::new(32);
         device.data[10 * BLOCK_SIZE..11 * BLOCK_SIZE].fill(0xee);
-        device.data[10 * BLOCK_SIZE + TEST_INODE_SIZE..10 * BLOCK_SIZE + 2 * TEST_INODE_SIZE]
+        device.data
+            [10 * BLOCK_SIZE + TEST_INODE_SIZE_BYTES..10 * BLOCK_SIZE + 2 * TEST_INODE_SIZE_BYTES]
             .fill(0);
         let mut jbd2_dev = device_with(device);
-        let mut cache = InodeCache::new(4, TEST_INODE_SIZE);
+        let mut cache = InodeCache::new(4, TEST_INODE_SIZE_BYTES);
         let number = inode_number(3);
         let handle = cache
-            .get_or_load(&mut jbd2_dev, number, AbsoluteBN::new(10), TEST_INODE_SIZE)
+            .get_or_load(
+                &mut jbd2_dev,
+                number,
+                AbsoluteBN::new(10),
+                TEST_INODE_SIZE_BYTES,
+            )
             .expect("load inode")
             .handle();
 
@@ -669,7 +685,7 @@ mod tests {
                 &mut jbd2_dev,
                 handle,
                 AbsoluteBN::new(10),
-                TEST_INODE_SIZE,
+                TEST_INODE_SIZE_BYTES,
                 set_raw_mode(0o120777),
             )
             .expect("modify by handle");
@@ -687,13 +703,13 @@ mod tests {
         let device = jbd2_dev.into_inner();
         assert_eq!(device.write_calls, [10]);
         assert_eq!(
-            device.record(10, TEST_INODE_SIZE)[..2],
+            device.record(10, TEST_INODE_SIZE_BYTES)[..2],
             0o120777u16.to_le_bytes()
         );
         assert!(device.record(10, 0).iter().all(|byte| *byte == 0xee));
         assert!(
             device
-                .record(10, 2 * TEST_INODE_SIZE)
+                .record(10, 2 * TEST_INODE_SIZE_BYTES)
                 .iter()
                 .all(|byte| *byte == 0xee)
         );
@@ -702,7 +718,7 @@ mod tests {
     #[test]
     fn full_cache_writes_back_dirty_least_recently_used_inode() {
         let mut jbd2_dev = device_with(TestBlockDevice::new(32));
-        let mut cache = InodeCache::new(1, TEST_INODE_SIZE);
+        let mut cache = InodeCache::new(1, TEST_INODE_SIZE_BYTES);
         let victim = inode_number(2);
         cache
             .modify(
@@ -729,7 +745,7 @@ mod tests {
         let mut device = TestBlockDevice::new(32);
         device.set_mode(12, 0, 0o100644);
         let mut jbd2_dev = device_with(device);
-        let mut cache = InodeCache::new(4, TEST_INODE_SIZE);
+        let mut cache = InodeCache::new(4, TEST_INODE_SIZE_BYTES);
         let number = inode_number(5);
         cache
             .get_or_load(&mut jbd2_dev, number, AbsoluteBN::new(12), 0)
@@ -753,7 +769,7 @@ mod tests {
     #[test]
     fn initialize_zeroed_rejects_dirty_record_and_out_of_block_offset() {
         let mut jbd2_dev = device_with(TestBlockDevice::new(32));
-        let mut cache = InodeCache::new(4, TEST_INODE_SIZE);
+        let mut cache = InodeCache::new(4, TEST_INODE_SIZE_BYTES);
         let number = inode_number(2);
         cache
             .get_or_load(&mut jbd2_dev, number, AbsoluteBN::new(10), 0)
@@ -769,7 +785,7 @@ mod tests {
                 &mut jbd2_dev,
                 inode_number(3),
                 AbsoluteBN::new(10),
-                BLOCK_SIZE - TEST_INODE_SIZE + 1,
+                BLOCK_SIZE - TEST_INODE_SIZE_BYTES + 1,
             )
             .expect_err("a record crossing the block end must be rejected");
 
@@ -783,8 +799,8 @@ mod tests {
     #[test]
     fn flush_all_writes_each_dirty_inode_block_once() {
         let mut jbd2_dev = device_with(TestBlockDevice::new(32));
-        let mut cache = InodeCache::new(8, TEST_INODE_SIZE);
-        for (raw, block, offset) in [(4, 11, 0), (3, 10, TEST_INODE_SIZE), (2, 10, 0)] {
+        let mut cache = InodeCache::new(8, TEST_INODE_SIZE_BYTES);
+        for (raw, block, offset) in [(4, 11, 0), (3, 10, TEST_INODE_SIZE_BYTES), (2, 10, 0)] {
             cache
                 .get_or_load(
                     &mut jbd2_dev,
@@ -810,7 +826,7 @@ mod tests {
     #[test]
     fn write_failures_keep_inode_dirty_and_cached() {
         let mut jbd2_dev = device_with(TestBlockDevice::failing_writes(32));
-        let mut cache = InodeCache::new(1, TEST_INODE_SIZE);
+        let mut cache = InodeCache::new(1, TEST_INODE_SIZE_BYTES);
         let number = inode_number(2);
         cache
             .get_or_load(&mut jbd2_dev, number, AbsoluteBN::new(10), 0)
@@ -837,7 +853,7 @@ mod tests {
     #[test]
     fn evict_writes_only_dirty_inodes_and_clear_writes_nothing() {
         let mut jbd2_dev = device_with(TestBlockDevice::new(32));
-        let mut cache = InodeCache::default(TEST_INODE_SIZE as u16);
+        let mut cache = InodeCache::default(TEST_INODE_SIZE_BYTES as u16);
         assert_eq!(cache.stats().max_entries, INODE_CACHE_MAX);
         for (raw, block) in [(2, 10), (3, 11), (4, 12)] {
             cache
