@@ -36,4 +36,4 @@ These are not meant for upstream.
 | `CHANGES.md` | added: this file |
 | `LICENSE-APACHE` | added: a copy of upstream's `LICENSE`, the Apache License, Version 2.0, under the name the shared crate workflows read; `LICENSE` stays as upstream's |
 
-The repository's topics are `rust`, `no-std` and `filesystem`. The shared settings also give every crate repository `formal-verification` and `kani`, which this one leaves out until it carries Kani harnesses; after `script/apply-settings` runs here, remove those two topics again.
+The repository's topics are `rust`, `no-std` and `filesystem`. The shared settings also give every crate repository `formal-verification` and `kani`, which this one leaves out until it carries Kani harnesses; after the shared settings are applied here again, remove those two topics.
