@@ -208,6 +208,30 @@ mod linear_directory_insertion_tests {
     }
 
     #[test]
+    fn appended_block_without_metadata_checksums_has_one_record_spanning_the_block() {
+        let (mut device, mut fs, _) = mounted();
+        without_dir_index(&mut fs);
+        fs.superblock.s_feature_ro_compat &= !Ext4Superblock::EXT4_FEATURE_RO_COMPAT_METADATA_CSUM;
+        mkdir(&mut device, &mut fs, "/plain").unwrap();
+        fill_directory(&mut device, &mut fs, "/plain", 0..16);
+
+        let (ino, mut inode) = lookup(&mut device, &mut fs, "/plain").unwrap();
+        let block_size = fs.superblock.block_size();
+        assert_eq!(inode.size(), 2 * block_size);
+        let second = resolve_inode_block(&fs, &mut device, ino, &mut inode, 1)
+            .unwrap()
+            .expect("appended block is mapped");
+        let cached = fs.datablock_cache.get_or_load(&mut device, second).unwrap();
+        let record_len = u16::from_le_bytes([cached.data[4], cached.data[5]]) as u64;
+        assert_eq!(record_len, block_size);
+        assert_eq!(&cached.data[8..11], &long_name(15).as_bytes()[..3]);
+        for index in 0..16 {
+            let path = format!("/plain/{}", long_name(index));
+            assert!(lookup(&mut device, &mut fs, &path).is_some(), "{index}");
+        }
+    }
+
+    #[test]
     fn insertion_reuses_a_freed_record_at_the_start_of_a_block() {
         let (mut device, mut fs, _) = mounted();
         without_dir_index(&mut fs);
@@ -359,6 +383,65 @@ mod directory_creation_tests {
         assert_eq!(error.kind(), Ext4ErrorKind::NoSpace);
         assert_eq!(Accounting::read(&mut device, &mut fs, parent), before);
         assert!(lookup(&mut device, &mut fs, &child).is_none());
+    }
+
+    #[test]
+    fn mkdir_reports_a_corrupt_parent_block_before_allocating() {
+        let (mut device, mut fs, _) = mounted();
+        mkdir(&mut device, &mut fs, "/damaged").unwrap();
+        let (parent, mut inode) = lookup(&mut device, &mut fs, "/damaged").unwrap();
+        let block = resolve_inode_block(&fs, &mut device, parent, &mut inode, 0)
+            .unwrap()
+            .expect("directory block is mapped");
+        // A record length of zero cannot be walked past.
+        fs.datablock_cache
+            .modify(&mut device, block, |data| {
+                data[4] = 0;
+                data[5] = 0;
+            })
+            .unwrap();
+        let before = Accounting::read(&mut device, &mut fs, parent);
+
+        let error = mkdir(&mut device, &mut fs, "/damaged/child").unwrap_err();
+
+        assert!(error.is_corruption(), "{error:?}");
+        assert_eq!(Accounting::read(&mut device, &mut fs, parent), before);
+    }
+
+    #[test]
+    fn mkdir_releases_the_new_inode_when_no_block_is_left() {
+        let (mut device, mut fs, _) = mounted();
+        mkdir(&mut device, &mut fs, "/parent").unwrap();
+        while fs.superblock.free_blocks_count() > 0 {
+            fs.alloc_block(&mut device).unwrap();
+        }
+        let (parent, _) = lookup(&mut device, &mut fs, "/parent").unwrap();
+        let before = Accounting::read(&mut device, &mut fs, parent);
+
+        let error = mkdir(&mut device, &mut fs, "/parent/child").unwrap_err();
+
+        assert_eq!(error.kind(), Ext4ErrorKind::NoSpace);
+        assert_eq!(Accounting::read(&mut device, &mut fs, parent), before);
+        assert!(lookup(&mut device, &mut fs, "/parent/child").is_none());
+    }
+
+    #[test]
+    fn mkdir_refuses_a_parent_at_the_link_limit_without_dir_nlink() {
+        let (mut device, mut fs, _) = mounted();
+        fs.superblock.s_feature_ro_compat &= !Ext4Superblock::EXT4_FEATURE_RO_COMPAT_DIR_NLINK;
+        mkdir(&mut device, &mut fs, "/parent").unwrap();
+        let (parent, _) = lookup(&mut device, &mut fs, "/parent").unwrap();
+        fs.modify_inode(&mut device, parent, |inode| {
+            inode.i_links_count = Ext4Inode::EXT4_LINK_MAX;
+        })
+        .unwrap();
+        let before = Accounting::read(&mut device, &mut fs, parent);
+
+        let error = mkdir(&mut device, &mut fs, "/parent/child").unwrap_err();
+
+        assert_eq!(error.kind(), Ext4ErrorKind::TooManyLinks);
+        assert_eq!(Accounting::read(&mut device, &mut fs, parent), before);
+        assert!(lookup(&mut device, &mut fs, "/parent/child").is_none());
     }
 
     #[test]
