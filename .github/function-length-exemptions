@@ -1,0 +1,58 @@
+# Code another project owns, which this fork keeps as written so its fixes apply upstream
+# (helpers/exemptions_file.py in nifeos/crate-workflows). Each entry holds the measured length;
+# a change to it fails until the entry changes too. Code the fork writes meets the limit in full.
+# <path> <function> <code lines> <reason>
+src/dir/bootstrap.rs create_lost_found_directory 101 upstream code, unchanged
+src/dir/insert.rs insert_dir_entry_raw 209 upstream code, unchanged
+src/dir/mkdir.rs create_directory_at_inner 236 upstream code, unchanged
+src/ext4/alloc.rs Ext4FileSystem::alloc_blocks 102 upstream code, unchanged
+src/ext4/alloc.rs Ext4FileSystem::alloc_inodes 113 upstream code, plus 2 lines of fix 9, which upstream pull request 2825 adds to the same function
+src/ext4/mkfs.rs compute_fs_layout 112 upstream code, unchanged
+src/ext4/mount.rs Ext4FileSystem::mount_inner 267 upstream code, unchanged
+src/ext4/owned.rs Ext4::read_directory_with_reader 122 upstream code, unchanged
+src/extents_tree/convert.rs ExtentTree::split_extent_recursive 132 upstream code, unchanged
+src/extents_tree/insert.rs ExtentTree::insert_recursive 150 upstream code, unchanged
+src/extents_tree/remove.rs ExtentTree::remove_extent 469 upstream code, plus 2 lines of fix 2a, which upstream pull request 2827 adds to the same function
+src/extents_tree/remove.rs remove_extent::leaf_step 130 upstream code, unchanged
+src/file/create.rs create_inode_at_inner 217 upstream code, unchanged
+src/file/delete.rs delete_dir 131 upstream code, unchanged
+src/file/io.rs truncate_inode_mapping 163 upstream code, plus 6 lines of fix 2b, which upstream pull request 2829 adds to the same function
+src/file/io.rs write_inode_data_through_unwritten 193 upstream code, unchanged
+src/file/xattr.rs persist_xattrs 140 upstream code, unchanged
+src/file/xattr.rs parse_xattrs 103 upstream code, unchanged
+src/file/xattr.rs failed_split_store_inode_publish_restores_inline_value_and_allocation 122 upstream code, unchanged
+src/hashtree/mutation.rs make_indexed_directory 142 upstream code, unchanged
+src/hashtree/mutation.rs split_leaf_and_insert 144 upstream code, unchanged
+src/indirect/mod.rs allocate_legacy_inode_block 127 upstream code, unchanged
+src/jbd2/jbd2.rs JBD2DEVSYSTEM::parse_replay_tags 120 upstream code, unchanged
+src/jbd2/jbd2.rs JBD2DEVSYSTEM::commit_transaction_with_mapping 249 upstream code, unchanged
+src/jbd2/jbd2.rs JBD2DEVSYSTEM::scan_one_transaction 214 upstream code, unchanged
+src/superblock/default.rs Ext4Superblock::default 105 upstream code, unchanged
+src/superblock/disk.rs Ext4Superblock::from_disk_bytes 152 upstream code, unchanged
+src/superblock/disk.rs Ext4Superblock::to_disk_bytes 144 upstream code, unchanged
+src/test_contracts.rs rsext4_entries_and_directory_iterator_rules_hold 103 upstream code, unchanged
+src/test_contracts.rs rsext4_disk_format_and_journal_struct_rules_hold 162 upstream code, unchanged
+src/test_contracts.rs rsext4_checksum_blockgroup_and_api_helpers_hold 218 upstream code, unchanged
+src/test_contracts.rs rsext4_journal_device_overlay_rules_hold 175 upstream code, unchanged
+src/test_contracts.rs rsext4_bmalloc_allocator_rules_hold 119 upstream code, unchanged
+src/test_contracts.rs rsext4_blockgroup_table_and_stats_rules_hold 131 upstream code, unchanged
+src/test_contracts.rs rsext4_extent_tree_lookup_and_run_rules_hold 266 upstream code, unchanged
+src/test_contracts.rs rsext4_dirblock_checksum_edge_rules_hold 117 upstream code, unchanged
+src/test_contracts.rs rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold 779 upstream code, unchanged
+tests/extent_restart.rs build_large_legacy_fixture 129 upstream code, unchanged
+tests/file_operations.rs failed_legacy_truncate_bitmap_write_restores_mapping_and_accounting 118 upstream code, unchanged
+tests/integration_test.rs owned_mount_injects_clock_separately_from_block_io 132 upstream code, unchanged
+tests/linux_image_repro.rs linux_indexed_directory_lookup_uses_on_disk_htree_root 161 upstream code, unchanged
+tests/linux_image_repro.rs failed_linear_to_htree_conversion_restores_linear_directory 175 upstream code, unchanged
+tests/linux_image_repro.rs indexed_delete_and_rename_keep_linux_htree_layout 195 upstream code, unchanged
+tests/linux_image_repro.rs failed_owned_htree_leaf_split_rolls_back_after_data_write 175 upstream code, unchanged
+tests/linux_image_repro.rs file_xattr_extent_map_geometry_round_trip 310 upstream code, unchanged
+tests/linux_image_repro.rs replay_checksum_journal_from_debugfs 108 upstream code, unchanged
+tests/linux_image_repro.rs legacy_sparse_truncate_prunes_single_double_and_triple_roots 129 upstream code, unchanged
+tests/linux_image_repro.rs legacy_orphan_recovery_truncates_linked_and_reaps_unlinked_inode 132 upstream code, unchanged
+tests/linux_image_repro.rs shifted_ranges_rebuild_multiple_leaves_and_preserve_unwritten_state 119 upstream code, unchanged
+tests/unwritten_extents.rs partial_write_converts_only_the_written_unwritten_block 102 upstream code, unchanged
+tests/unwritten_extents.rs failed_finish_restores_external_leaf_to_unwritten 103 upstream code, unchanged
+tests/unwritten_extents.rs assert_failed_multi_segment_extent_removal_is_atomic 103 upstream code, unchanged
+tests/unwritten_extents.rs assert_failed_insert_range_restores_old_tree 106 upstream code, unchanged
+tests/unwritten_extents.rs owned_core_reports_sparse_and_unwritten_file_extents 146 upstream code, unchanged

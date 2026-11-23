@@ -1,0 +1,52 @@
+# Code another project owns, which this fork keeps as written so its fixes apply upstream
+# (helpers/exemptions_file.py in nifeos/crate-workflows). Each entry covers the first use of one
+# token in one file. Prose the fork writes expands every acronym.
+# <path> <token> <reason>
+README_CN.md TGOSKits upstream code, unchanged
+README_CN.md PR upstream code, unchanged
+CHANGELOG.md VMA upstream code, unchanged
+CHANGELOG.md MD4 upstream code, unchanged
+CHANGELOG.md TEA upstream code, unchanged
+CHANGELOG.md HTree upstream code, unchanged
+CHANGELOG.md DTOs upstream code, unchanged
+CHANGELOG.md VFS upstream code, unchanged
+CHANGELOG.md EOF upstream code, unchanged
+CHANGELOG.md JBD2 upstream code, unchanged
+CHANGELOG.md COW upstream code, unchanged
+CHANGELOG.md SMP upstream code, unchanged
+CHANGELOG.md LRU upstream code, unchanged
+CHANGELOG.md SG2002 upstream code, unchanged
+CHANGELOG.md ENOTEMPTY upstream code, unchanged
+CHANGELOG.md EOPNOTSUPP upstream code, unchanged
+CHANGELOG.md USB upstream code, unchanged
+src/config.rs GDT upstream code, unchanged
+src/config.rs COMPAT upstream code, unchanged
+src/config.rs INCOMPAT upstream code, unchanged
+src/io.rs FUA upstream code, unchanged
+src/io.rs IRQ upstream code, unchanged
+src/runtime.rs MMP upstream code, unchanged
+src/tool.rs UUID upstream code, unchanged
+tests/crc_integrity.rs CRC upstream code, unchanged
+tests/error_handling.rs IO upstream code, unchanged
+tests/file_operations.rs POSIX upstream code, unchanged
+tests/file_operations.rs EOF upstream code, unchanged
+tests/file_operations.rs AOF upstream code, unchanged
+tests/metadata_lifecycle.rs IDs upstream code, unchanged
+src/blockdev/cached_device.rs RMW upstream code, unchanged
+src/blockdev/cached_device.rs JBD2 upstream code, unchanged
+src/cache/bitmap.rs LRU upstream code, unchanged
+src/checksum/core.rs CRC32C upstream code, unchanged
+src/checksum/dirblock.rs HTree upstream code, unchanged
+src/checksum/journal.rs CRC32 upstream code, unchanged
+src/crc32c/arm64.rs ARMv8 upstream code, unchanged
+src/crc32c/x86_64.rs SIMD upstream code, unchanged
+src/crc32c/x86_64.rs CPUID upstream code, unchanged
+src/crc32c/x86_64.rs FPU upstream code, unchanged
+src/crc32c/x86_64.rs SSE4 upstream code, unchanged
+src/crc32c/x86_64.rs ECX upstream code, unchanged
+src/disknode/inode.rs UID upstream code, unchanged
+src/disknode/inode.rs GID upstream code, unchanged
+src/disknode/inode.rs FIFO upstream code, unchanged
+src/ext4/owned.rs VFS upstream code, unchanged
+src/ext4/owned.rs ABI upstream code, unchanged
+src/file/xattr_extent.rs FIEMAP upstream code, unchanged
