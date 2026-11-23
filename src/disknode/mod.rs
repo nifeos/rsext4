@@ -72,6 +72,24 @@ mod tests {
     }
 
     #[test]
+    fn device_number_accessors_return_the_largest_accepted_values() {
+        let largest = DeviceNumber::new(0x0fff, 0x000f_ffff).unwrap();
+        assert_eq!(largest.major(), 0x0fff);
+        assert_eq!(largest.minor(), 0x000f_ffff);
+
+        let mut inode = Ext4Inode {
+            i_mode: Ext4Inode::S_IFBLK | 0o600,
+            ..Default::default()
+        };
+        inode.set_device_number(largest).unwrap();
+        let decoded = inode.device_number().unwrap().unwrap();
+        assert_eq!((decoded.major(), decoded.minor()), (0x0fff, 0x000f_ffff));
+
+        assert_eq!(DeviceNumber::ZERO.major(), 0);
+        assert_eq!(DeviceNumber::ZERO.minor(), 0);
+    }
+
+    #[test]
     fn device_number_codec_rejects_out_of_range_or_regular_inode_use() {
         assert_eq!(
             DeviceNumber::new(4096, 0).unwrap_err().kind(),

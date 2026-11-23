@@ -649,3 +649,50 @@ fn linear_fallback_preserves_extent_codec_error() {
             if error.kind() == crate::error::Ext4ErrorKind::Corrupted
     ));
 }
+
+#[test]
+fn into_ext4_maps_each_hash_tree_error_to_its_domain_kind() {
+    use crate::error::{ErrorContext, Ext4ErrorKind};
+
+    let cases = [
+        (HashTreeError::EntryNotFound, Ext4ErrorKind::NotFound),
+        (
+            HashTreeError::UnsupportedHashVersion,
+            Ext4ErrorKind::Unsupported,
+        ),
+        (HashTreeError::InvalidHashTree, Ext4ErrorKind::Corrupted),
+        (HashTreeError::CorruptedHashTree, Ext4ErrorKind::Corrupted),
+        (HashTreeError::BlockOutOfRange, Ext4ErrorKind::Corrupted),
+        (HashTreeError::BufferTooSmall, Ext4ErrorKind::Corrupted),
+    ];
+    for (error, kind) in cases {
+        let converted = error.into_ext4("htree:test");
+        assert_eq!(converted.kind(), kind, "{error:?}");
+        assert_eq!(
+            converted.context(),
+            Some(ErrorContext::Operation { op: "htree:test" }),
+            "{error:?}"
+        );
+    }
+
+    let inner = Ext4Error::io();
+    assert_eq!(
+        HashTreeError::Filesystem(inner).into_ext4("htree:test"),
+        inner
+    );
+}
+
+#[test]
+fn only_layout_errors_allow_linear_fallback() {
+    for error in [
+        HashTreeError::InvalidHashTree,
+        HashTreeError::UnsupportedHashVersion,
+        HashTreeError::CorruptedHashTree,
+        HashTreeError::BlockOutOfRange,
+        HashTreeError::BufferTooSmall,
+    ] {
+        assert!(error.allows_linear_fallback(), "{error:?}");
+    }
+    assert!(!HashTreeError::EntryNotFound.allows_linear_fallback());
+    assert!(!HashTreeError::Filesystem(Ext4Error::io()).allows_linear_fallback());
+}

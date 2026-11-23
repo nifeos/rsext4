@@ -450,6 +450,110 @@ pub struct InodeCacheStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::disknode::Ext4Timestamp;
+
+    const TEST_INODE_SIZE_BYTES: usize = 256;
+
+    struct TestBlockDevice {
+        data: Vec<u8>,
+        fail_writes: bool,
+        read_calls: Vec<u64>,
+        write_calls: Vec<u64>,
+    }
+
+    impl TestBlockDevice {
+        fn new(blocks: usize) -> Self {
+            Self {
+                data: alloc::vec![0; blocks * BLOCK_SIZE],
+                fail_writes: false,
+                read_calls: Vec::new(),
+                write_calls: Vec::new(),
+            }
+        }
+
+        fn failing_writes(blocks: usize) -> Self {
+            Self {
+                fail_writes: true,
+                ..Self::new(blocks)
+            }
+        }
+
+        fn record(&self, block: usize, offset: usize) -> &[u8] {
+            let start = block * BLOCK_SIZE + offset;
+            &self.data[start..start + TEST_INODE_SIZE_BYTES]
+        }
+
+        fn set_mode(&mut self, block: usize, offset: usize, mode: u16) {
+            let start = block * BLOCK_SIZE + offset;
+            self.data[start..start + 2].copy_from_slice(&mode.to_le_bytes());
+        }
+    }
+
+    impl BlockIo for TestBlockDevice {
+        fn read(
+            &mut self,
+            buffer: &mut [u8],
+            block_id: crate::io::SectorId,
+            _count: u32,
+        ) -> Ext4Result<()> {
+            self.read_calls.push(block_id.raw());
+            let start = block_id.as_usize()? * BLOCK_SIZE;
+            buffer.copy_from_slice(&self.data[start..start + buffer.len()]);
+            Ok(())
+        }
+
+        fn write(
+            &mut self,
+            buffer: &[u8],
+            block_id: crate::io::SectorId,
+            _count: u32,
+        ) -> Ext4Result<()> {
+            if self.fail_writes {
+                return Err(Ext4Error::io());
+            }
+            self.write_calls.push(block_id.raw());
+            let start = block_id.as_usize()? * BLOCK_SIZE;
+            self.data[start..start + buffer.len()].copy_from_slice(buffer);
+            Ok(())
+        }
+
+        fn geometry(&self) -> crate::io::DeviceGeometry {
+            crate::io::DeviceGeometry::new(BLOCK_SIZE as u32, (self.data.len() / BLOCK_SIZE) as u64)
+        }
+
+        fn capabilities(&self) -> crate::io::DeviceCapabilities {
+            crate::io::DeviceCapabilities {
+                flush: true,
+                ..crate::io::DeviceCapabilities::default()
+            }
+        }
+
+        fn flush(&mut self) -> Ext4Result<()> {
+            Ok(())
+        }
+    }
+
+    impl crate::runtime::Clock for TestBlockDevice {
+        fn now(&self) -> Ext4Result<Ext4Timestamp> {
+            Ok(Ext4Timestamp::new(0, 0))
+        }
+    }
+
+    fn device_with(device: TestBlockDevice) -> Jbd2Dev<TestBlockDevice> {
+        Jbd2Dev::initial_jbd2dev(0, device, false)
+    }
+
+    fn inode_number(raw: u32) -> InodeNumber {
+        InodeNumber::new(raw).expect("valid inode number")
+    }
+
+    fn set_raw_mode(mode: u16) -> impl FnOnce(&mut Ext4Inode, &mut [u8]) -> Ext4Result<()> {
+        move |inode, raw| {
+            inode.i_mode = mode;
+            raw[..2].copy_from_slice(&mode.to_le_bytes());
+            Ok(())
+        }
+    }
 
     #[test]
     fn test_inode_location_calc() {
@@ -481,5 +585,297 @@ mod tests {
         assert_eq!(block, AbsoluteBN::new(101));
         assert_eq!(offset, 0);
         assert_eq!(group, BGIndex::new(0));
+    }
+
+    #[test]
+    fn get_or_load_decodes_each_inode_record_once() {
+        let mut device = TestBlockDevice::new(32);
+        device.set_mode(10, TEST_INODE_SIZE_BYTES, 0o100644);
+        let mut jbd2_dev = device_with(device);
+        let mut cache = InodeCache::new(4, TEST_INODE_SIZE_BYTES);
+        let number = inode_number(2);
+
+        let first = cache
+            .get_or_load(
+                &mut jbd2_dev,
+                number,
+                AbsoluteBN::new(10),
+                TEST_INODE_SIZE_BYTES,
+            )
+            .expect("load inode");
+        assert_eq!(first.inode.i_mode, 0o100644);
+        assert_eq!(first.raw_inode()[..2], 0o100644u16.to_le_bytes());
+        assert_eq!(first.raw_inode().len(), TEST_INODE_SIZE_BYTES);
+        assert_eq!(first.handle().inode_num, number);
+        assert_eq!(
+            (first.block_num, first.offset_in_block),
+            (AbsoluteBN::new(10), TEST_INODE_SIZE_BYTES)
+        );
+        assert_eq!((first.last_access, first.generation), (1, 1));
+
+        let again = cache
+            .get_or_load(
+                &mut jbd2_dev,
+                number,
+                AbsoluteBN::new(10),
+                TEST_INODE_SIZE_BYTES,
+            )
+            .expect("reuse cached inode");
+        assert_eq!((again.last_access, again.generation), (2, 2));
+        assert_eq!(
+            cache.get_mut(number).map(|cached| cached.last_access),
+            Some(3)
+        );
+        assert!(cache.get_mut(inode_number(3)).is_none());
+        assert_eq!(jbd2_dev.into_inner().read_calls, [10]);
+    }
+
+    #[test]
+    fn failed_modify_restores_previous_inode_and_raw_bytes() {
+        let mut device = TestBlockDevice::new(32);
+        device.set_mode(10, 0, 0o040755);
+        let mut jbd2_dev = device_with(device);
+        let mut cache = InodeCache::new(4, TEST_INODE_SIZE_BYTES);
+        let number = inode_number(2);
+
+        let error = cache
+            .modify(
+                &mut jbd2_dev,
+                number,
+                AbsoluteBN::new(10),
+                0,
+                |inode, raw| {
+                    inode.i_mode = 0o100600;
+                    raw[..2].fill(0xff);
+                    Err(Ext4Error::invalid_input())
+                },
+            )
+            .expect_err("the closure error must be returned");
+
+        assert_eq!(error.kind(), Ext4ErrorKind::InvalidInput);
+        let cached = cache.get(number).expect("loaded inode stays cached");
+        assert_eq!(cached.inode.i_mode, 0o040755);
+        assert_eq!(cached.raw_inode()[..2], 0o040755u16.to_le_bytes());
+        assert!(!cached.dirty);
+        assert!(jbd2_dev.into_inner().write_calls.is_empty());
+    }
+
+    #[test]
+    fn modify_by_handle_writes_record_in_place_on_flush() {
+        let mut device = TestBlockDevice::new(32);
+        device.data[10 * BLOCK_SIZE..11 * BLOCK_SIZE].fill(0xee);
+        device.data
+            [10 * BLOCK_SIZE + TEST_INODE_SIZE_BYTES..10 * BLOCK_SIZE + 2 * TEST_INODE_SIZE_BYTES]
+            .fill(0);
+        let mut jbd2_dev = device_with(device);
+        let mut cache = InodeCache::new(4, TEST_INODE_SIZE_BYTES);
+        let number = inode_number(3);
+        let handle = cache
+            .get_or_load(
+                &mut jbd2_dev,
+                number,
+                AbsoluteBN::new(10),
+                TEST_INODE_SIZE_BYTES,
+            )
+            .expect("load inode")
+            .handle();
+
+        cache
+            .modify_by_handle(
+                &mut jbd2_dev,
+                handle,
+                AbsoluteBN::new(10),
+                TEST_INODE_SIZE_BYTES,
+                set_raw_mode(0o120777),
+            )
+            .expect("modify by handle");
+        assert_eq!(
+            cache.stats().dirty_entries,
+            usize::from(USE_MULTILEVEL_CACHE)
+        );
+        cache.flush(&mut jbd2_dev, number).expect("flush inode");
+        cache
+            .flush(&mut jbd2_dev, inode_number(4))
+            .expect("flushing an absent inode is a no-op");
+
+        assert_eq!(cache.stats().dirty_entries, 0);
+        assert_eq!(cache.get(number).expect("cached").inode.i_mode, 0o120777);
+        let device = jbd2_dev.into_inner();
+        assert_eq!(device.write_calls, [10]);
+        assert_eq!(
+            device.record(10, TEST_INODE_SIZE_BYTES)[..2],
+            0o120777u16.to_le_bytes()
+        );
+        assert!(device.record(10, 0).iter().all(|byte| *byte == 0xee));
+        assert!(
+            device
+                .record(10, 2 * TEST_INODE_SIZE_BYTES)
+                .iter()
+                .all(|byte| *byte == 0xee)
+        );
+    }
+
+    #[test]
+    fn full_cache_writes_back_dirty_least_recently_used_inode() {
+        let mut jbd2_dev = device_with(TestBlockDevice::new(32));
+        let mut cache = InodeCache::new(1, TEST_INODE_SIZE_BYTES);
+        let victim = inode_number(2);
+        cache
+            .modify(
+                &mut jbd2_dev,
+                victim,
+                AbsoluteBN::new(10),
+                0,
+                set_raw_mode(0o100644),
+            )
+            .expect("modify victim");
+
+        cache
+            .get_or_load(&mut jbd2_dev, inode_number(3), AbsoluteBN::new(11), 0)
+            .expect("load second inode");
+
+        assert!(cache.get(victim).is_none());
+        assert_eq!(cache.stats().total_entries, 1);
+        let device = jbd2_dev.into_inner();
+        assert_eq!(device.record(10, 0)[..2], 0o100644u16.to_le_bytes());
+    }
+
+    #[test]
+    fn initialize_zeroed_replaces_clean_record_without_reading_disk() {
+        let mut device = TestBlockDevice::new(32);
+        device.set_mode(12, 0, 0o100644);
+        let mut jbd2_dev = device_with(device);
+        let mut cache = InodeCache::new(4, TEST_INODE_SIZE_BYTES);
+        let number = inode_number(5);
+        cache
+            .get_or_load(&mut jbd2_dev, number, AbsoluteBN::new(12), 0)
+            .expect("load stale inode");
+
+        cache
+            .initialize_zeroed(&mut jbd2_dev, number, AbsoluteBN::new(12), 0)
+            .expect("initialize zeroed inode");
+        cache
+            .initialize_zeroed(&mut jbd2_dev, inode_number(6), AbsoluteBN::new(13), 0)
+            .expect("initialize uncached inode");
+
+        let cached = cache.get(number).expect("zeroed inode is cached");
+        assert_eq!(cached.inode.i_mode, 0);
+        assert!(cached.raw_inode().iter().all(|byte| *byte == 0));
+        assert!(!cached.dirty);
+        assert_eq!(cache.stats().total_entries, 2);
+        assert_eq!(jbd2_dev.into_inner().read_calls, [12]);
+    }
+
+    #[test]
+    fn initialize_zeroed_rejects_dirty_record_and_out_of_block_offset() {
+        let mut jbd2_dev = device_with(TestBlockDevice::new(32));
+        let mut cache = InodeCache::new(4, TEST_INODE_SIZE_BYTES);
+        let number = inode_number(2);
+        cache
+            .get_or_load(&mut jbd2_dev, number, AbsoluteBN::new(10), 0)
+            .expect("load inode");
+        cache.mark_dirty(number);
+        cache.mark_dirty(inode_number(9));
+
+        let dirty = cache
+            .initialize_zeroed(&mut jbd2_dev, number, AbsoluteBN::new(10), 0)
+            .expect_err("a dirty record must not be discarded");
+        let range = cache
+            .initialize_zeroed(
+                &mut jbd2_dev,
+                inode_number(3),
+                AbsoluteBN::new(10),
+                BLOCK_SIZE - TEST_INODE_SIZE_BYTES + 1,
+            )
+            .expect_err("a record crossing the block end must be rejected");
+
+        assert_eq!(dirty.kind(), Ext4ErrorKind::Corrupted);
+        assert_eq!(range.kind(), Ext4ErrorKind::Corrupted);
+        assert!(cache.get(number).expect("dirty record stays").dirty);
+        assert!(cache.get(inode_number(3)).is_none());
+        assert_eq!(cache.stats().dirty_entries, 1);
+    }
+
+    #[test]
+    fn flush_all_writes_each_dirty_inode_block_once() {
+        let mut jbd2_dev = device_with(TestBlockDevice::new(32));
+        let mut cache = InodeCache::new(8, TEST_INODE_SIZE_BYTES);
+        for (raw, block, offset) in [(4, 11, 0), (3, 10, TEST_INODE_SIZE_BYTES), (2, 10, 0)] {
+            cache
+                .get_or_load(
+                    &mut jbd2_dev,
+                    inode_number(raw),
+                    AbsoluteBN::new(block),
+                    offset,
+                )
+                .expect("load inode");
+            cache.mark_dirty(inode_number(raw));
+        }
+        cache
+            .get_or_load(&mut jbd2_dev, inode_number(5), AbsoluteBN::new(12), 0)
+            .expect("load clean inode");
+        assert_eq!(cache.stats().dirty_entries, 3);
+
+        cache.flush_all(&mut jbd2_dev).expect("flush all inodes");
+
+        let stats = cache.stats();
+        assert_eq!((stats.total_entries, stats.dirty_entries), (4, 0));
+        assert_eq!(jbd2_dev.into_inner().write_calls, [10, 11]);
+    }
+
+    #[test]
+    fn write_failures_keep_inode_dirty_and_cached() {
+        let mut jbd2_dev = device_with(TestBlockDevice::failing_writes(32));
+        let mut cache = InodeCache::new(1, TEST_INODE_SIZE_BYTES);
+        let number = inode_number(2);
+        cache
+            .get_or_load(&mut jbd2_dev, number, AbsoluteBN::new(10), 0)
+            .expect("load inode");
+        cache.mark_dirty(number);
+
+        cache
+            .flush(&mut jbd2_dev, number)
+            .expect_err("flush must report the write failure");
+        cache
+            .flush_all(&mut jbd2_dev)
+            .expect_err("flush_all must report the write failure");
+        cache
+            .evict(&mut jbd2_dev, number)
+            .expect_err("evict must report the write failure");
+        cache
+            .get_or_load(&mut jbd2_dev, inode_number(3), AbsoluteBN::new(11), 0)
+            .expect_err("making room must report the write failure");
+
+        assert!(cache.get(number).expect("inode stays cached").dirty);
+        assert!(cache.get(inode_number(3)).is_none());
+    }
+
+    #[test]
+    fn evict_writes_only_dirty_inodes_and_clear_writes_nothing() {
+        let mut jbd2_dev = device_with(TestBlockDevice::new(32));
+        let mut cache = InodeCache::default(TEST_INODE_SIZE_BYTES as u16);
+        assert_eq!(cache.stats().max_entries, INODE_CACHE_MAX);
+        for (raw, block) in [(2, 10), (3, 11), (4, 12)] {
+            cache
+                .get_or_load(&mut jbd2_dev, inode_number(raw), AbsoluteBN::new(block), 0)
+                .expect("load inode");
+        }
+        cache.mark_dirty(inode_number(2));
+        cache.mark_dirty(inode_number(4));
+
+        cache
+            .evict(&mut jbd2_dev, inode_number(2))
+            .expect("evict dirty");
+        cache
+            .evict(&mut jbd2_dev, inode_number(3))
+            .expect("evict clean");
+        cache
+            .evict(&mut jbd2_dev, inode_number(7))
+            .expect("evicting an absent inode is a no-op");
+        assert_eq!(cache.stats().total_entries, 1);
+        cache.clear();
+
+        assert_eq!(cache.stats().total_entries, 0);
+        assert_eq!(jbd2_dev.into_inner().write_calls, [10]);
     }
 }
