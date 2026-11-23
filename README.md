@@ -1,81 +1,80 @@
-<h1 align="center">rsext4</h1>
+# rsext4
 
-<p align="center">A lightweight ext4 file system</p>
+[![check](https://github.com/nifeos/rsext4/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nifeos/rsext4/actions/workflows/ci.yml?query=branch%3Amain)
+[![proofs](https://github.com/nifeos/rsext4/actions/workflows/proofs.yml/badge.svg?branch=main)](https://github.com/nifeos/rsext4/actions/workflows/proofs.yml?query=branch%3Amain)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/nifeos/rsext4#license)
+[![minimum Rust version](https://img.shields.io/badge/rust-1.94%2B-blue.svg)](https://github.com/nifeos/rsext4/blob/main/Cargo.toml)
 
-<div align="center">
+A `no_std` ext4 file system in Rust: mount, read, write, format and journal replay over any block
+device that implements `BlockIo`.
 
-[![Crates.io](https://img.shields.io/crates/v/rsext4.svg)](https://crates.io/crates/rsext4)
-[![Docs.rs](https://docs.rs/rsext4/badge.svg)](https://docs.rs/rsext4)
-[![Rust](https://img.shields.io/badge/edition-2024-orange.svg)](https://www.rust-lang.org/)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
+This repository is a fork of `rsext4`, which lives in
+[rcore-os/tgoskits](https://github.com/rcore-os/tgoskits) under `fs/rsext4`. It tracks that
+directory, starting from the published 0.9.2 release, and carries fixes upstream has not released
+yet. Each fix goes upstream as an issue and a pull request of its own, written to upstream's
+conventions, and the fork stops carrying it once upstream releases it.
+[CHANGES.md](CHANGES.md) lists every file the fork changes, why, and where each fix stands
+upstream. The history before the fork is upstream's own, split out of tgoskits.
 
-</div>
+[README_CN.md](README_CN.md) is upstream's Chinese README, unchanged.
 
-English | [中文](README_CN.md)
+## EXAMPLES
 
-# Introduction
-
-`rsext4` provides A lightweight ext4 file system. It is maintained as part of the TGOSKits component set and is intended for Rust projects that integrate with ArceOS, AxVisor, or related low-level systems software.
-
-## Quick Start
-
-### Installation
-
-Add this crate to your `Cargo.toml`:
-
-```toml
-[dependencies]
-rsext4 = "0.3.0"
-```
-
-### Run Check and Test
-
-```bash
-# Enter the crate directory
-cd fs/rsext4
-
-# Format code
-cargo fmt --all
-
-# Run clippy
-cargo clippy --all-targets --all-features
-
-# Run tests
-cargo test --all-features
-
-# Build documentation
-cargo doc --no-deps
-```
-
-## Integration
-
-### Example
+Format a device, mount it, and write and read one file.
+[examples/host_perf.rs](examples/host_perf.rs) runs this sequence and defines `MemoryDevice` (a
+`BlockIo` over a byte vector) and `BenchClock` (a fixed clock).
 
 ```rust
-use rsext4 as _;
+use rsext4::{
+    Ext4, FileName, FilePermissions, MkfsOptions, MountOptions, MountServices, MutationContext,
+    NoopObserver, format,
+};
 
-fn main() {
-    // Integrate `rsext4` into your project here.
-}
+let device = format(MemoryDevice::new(), BenchClock(Cell::new(1_700_000_000)), MkfsOptions::default())?;
+let services = MountServices::new(BenchClock(Cell::new(1_700_000_000)), (), NoopObserver);
+let mut filesystem = Ext4::mount(device, services, MountOptions::read_write())?;
+let file = filesystem.create_regular_file(
+    MutationContext::new(0, 0, 0, 0),
+    filesystem.root_inode(),
+    FileName::new(b"hello.txt")?,
+    FilePermissions::new(0o644)?,
+)?;
+filesystem.write_inode(file.number, 0, b"hello")?;
+let mut buffer = [0; 5];
+filesystem.read_inode(file.number, 0, &mut buffer)?;
+filesystem.unmount()?;
 ```
 
-### Documentation
+## What is proven
 
-Generate and view API documentation:
+Nothing yet. The crate carries no Kani harnesses; adding them is open work.
 
-```bash
-cargo doc --no-deps --open
+## Building and testing
+
+```sh
+cargo build
+cargo test --all-features
+rustup target add aarch64-unknown-none-softfloat riscv64imac-unknown-none-elf x86_64-unknown-none
+cargo build --lib --target aarch64-unknown-none-softfloat
+cargo build --lib --target riscv64imac-unknown-none-elf
+cargo build --lib --target x86_64-unknown-none
 ```
 
-Online documentation: [docs.rs/rsext4](https://docs.rs/rsext4)
+Some tests format images with `mke2fs` and check them with `e2fsck`, so they need e2fsprogs 1.47
+or newer on the path. The fuzz targets are in `fuzz/`, and [fuzz/README.md](fuzz/README.md)
+says how to build their seed corpus and run them.
 
-# Contributing
+## BUGS
 
-1. Fork the repository and create a branch
-2. Run local format and checks
-3. Run local tests relevant to this crate
-4. Submit a PR and ensure CI passes
+- The crate's names, comments and documentation follow upstream's conventions, not those of the
+  other crates that share these workflows, because a change written to upstream's conventions can go
+  upstream unchanged.
 
-# License
+## Minimum Rust version
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](./LICENSE) for details.
+Rust 1.94. To check it, run `rustup toolchain install 1.94 --profile minimal`, then
+`cargo +1.94 test --all-features`, and the bare-metal builds above with `+1.94`.
+
+## License
+
+Licensed under the Apache License, Version 2.0 ([LICENSE](LICENSE)), as upstream licenses it.
