@@ -3,16 +3,19 @@
 //! Every test shrinks an extent-mapped file. Three fail a write during the truncate: the inode
 //! write that finishes it, the write-through that zeroes the tail of the retained block, and the
 //! write that restores that tail after the inode write failed. The first two check that no byte of
-//! the file changed, and the third that the failed restore is the error reported. The last test
-//! shrinks a depth-2 tree past a whole index node and checks that the node is freed.
+//! the file changed, and the third that the failed restore is the error reported. One fails the
+//! read of the retained block, before any byte is zeroed, and checks that nothing is put back. The
+//! last test shrinks a depth-2 tree past a whole index node and checks that the node is freed.
 
 use std::{cell::Cell, rc::Rc};
 
 use rsext4::{error::Ext4Result, *};
 
-/// In-memory block device whose write of one chosen sector fails after it lands.
+/// In-memory block device whose write of one chosen sector fails after it lands, and whose read
+/// of one chosen sector fails once.
 struct MockBlockDevice {
     data: Vec<u8>,
+    fail_read_sector: Rc<Cell<Option<u64>>>,
     fail_after_write_sector: Rc<Cell<Option<u64>>>,
     /// Takes the place of `fail_after_write_sector` once that failure fires.
     then_fail_after_write_sector: Rc<Cell<Option<u64>>>,
@@ -23,6 +26,7 @@ impl MockBlockDevice {
     fn new(size: usize) -> Self {
         Self {
             data: vec![0; size],
+            fail_read_sector: Rc::new(Cell::new(None)),
             fail_after_write_sector: Rc::new(Cell::new(None)),
             then_fail_after_write_sector: Rc::new(Cell::new(None)),
             now: Cell::new(1_700_000_000),
@@ -33,6 +37,11 @@ impl MockBlockDevice {
         let device = Self::new(size);
         let handle = Rc::clone(&device.fail_after_write_sector);
         (device, handle)
+    }
+
+    /// Returns the handle for a read failure that fires once.
+    fn read_failure_handle(&self) -> Rc<Cell<Option<u64>>> {
+        Rc::clone(&self.fail_read_sector)
     }
 
     /// Returns the handle for a write failure armed once the first one fires.
@@ -57,6 +66,10 @@ impl MockBlockDevice {
 impl BlockIo for MockBlockDevice {
     fn read(&mut self, buffer: &mut [u8], sector: SectorId, _count: u32) -> Ext4Result<()> {
         let range = self.range(sector, buffer.len())?;
+        if self.fail_read_sector.get() == Some(sector.raw()) {
+            self.fail_read_sector.set(None);
+            return Err(Ext4Error::io());
+        }
         buffer.copy_from_slice(&self.data[range]);
         Ok(())
     }
@@ -214,6 +227,54 @@ fn failed_tail_restore_after_failed_truncate_commit_is_reported() {
         fail_after_write_sector.get(),
         None,
         "the restore write must have been the one that failed"
+    );
+}
+
+/// A fresh mount has nothing cached, so zeroing the tail must read the retained block first. When
+/// that read fails, no byte was zeroed, and the truncate reports the read's error without trying to
+/// put a tail back.
+#[test]
+fn failed_read_of_the_retained_block_aborts_the_truncate_without_a_restore() {
+    let device = MockBlockDevice::new(100 * 1024 * 1024);
+    let fail_read_sector = device.read_failure_handle();
+    let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, device, true);
+
+    mkfs(&mut jbd2_dev).expect("mkfs failed");
+    let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("mount failed");
+    mkfile(&mut jbd2_dev, &mut fs, "/tail-read", None, None).expect("file creation failed");
+    let original: Vec<u8> = (0..2 * BLOCK_SIZE).map(|i| (i % 251) as u8 + 1).collect();
+    write_file(&mut jbd2_dev, &mut fs, "/tail-read", 0, &original).unwrap();
+    umount(fs, &mut jbd2_dev).expect("unmount failed");
+    let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("remount failed");
+    let (inode_number, mut inode) = dir::get_inode_with_num(&mut fs, &mut jbd2_dev, "/tail-read")
+        .unwrap()
+        .unwrap();
+    let retained_block =
+        loopfile::resolve_inode_block(&fs, &mut jbd2_dev, inode_number, &mut inode, 0)
+            .unwrap()
+            .expect("retained block missing");
+
+    fail_read_sector.set(Some(retained_block.raw()));
+    let error = truncate(&mut jbd2_dev, &mut fs, "/tail-read", 100)
+        .expect_err("a failed read of the retained block must abort the truncate");
+    assert_eq!(error.kind(), Ext4ErrorKind::Io);
+    assert_ne!(
+        error.context(),
+        Some(ErrorContext::Operation {
+            op: "rollback:truncate_tail_restore"
+        }),
+        "no tail was zeroed, so none may be restored"
+    );
+    assert_eq!(
+        fail_read_sector.get(),
+        None,
+        "the read must have been the one that failed"
+    );
+
+    let data = read_file(&mut jbd2_dev, &mut fs, "/tail-read").unwrap();
+    assert_eq!(
+        data, original,
+        "a failed truncate must leave the file as it was"
     );
 }
 
