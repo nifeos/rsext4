@@ -14,8 +14,8 @@ issue and pull request do not exist yet.
 
 | fix | files | what it fixes | upstream |
 |---|---|---|---|
-| 2a | `src/extents_tree/remove.rs`, `tests/file_operations.rs` | shrinking an extent-mapped file past a whole index node wrote the emptied node back instead of freeing it | not yet filed |
-| 2b | `src/file/io.rs`, `tests/file_operations.rs` | a single-transaction truncate that failed after zeroing the tail of the retained block left the tail zeroed; the tail is now restored | not yet filed |
+| 2a | `src/extents_tree/remove.rs`, `tests/extent_truncate.rs` | shrinking an extent-mapped file past a whole index node wrote the emptied node back instead of freeing it | not yet filed |
+| 2b | `src/file/io.rs`, `tests/extent_truncate.rs` | a single-transaction truncate that failed after zeroing the tail of the retained block left the tail zeroed; the tail is now restored | not yet filed |
 | 4 | `fuzz/` (all files) | adds cargo-fuzz targets for the superblock, the group descriptor table, extent tree nodes, directory blocks, HTree lookup, mount and walk, and journal replay | not yet filed |
 | 5a | `src/crc32c/arm64.rs`, `src/crc32c/crc32c.rs` | states the safety argument at each `unsafe` use in the CRC32C code | not yet filed |
 | 5b | `src/blockgroup_description/table.rs`, `src/blockgroup_description/tests.rs`, `src/test_contracts.rs` | group descriptors were read by casting a byte offset in the table to `&Ext4GroupDesc`, which is undefined behavior on unaligned bytes, reads native byte order and always spans 64 bytes, so 32-byte descriptors read and wrote the next record; each record is now decoded at its own size (breaking: `get_desc` returns `Option<Ext4GroupDesc>`, and `set_desc` replaces `get_desc_mut`) | not yet filed |
