@@ -200,4 +200,65 @@ mod tests {
         );
         io.flush().expect("declared memory flush must succeed");
     }
+
+    #[test]
+    fn plain_and_metadata_writes_reach_the_backend_write() {
+        let mut io = MemoryIo {
+            data: alloc::vec![0; 4096],
+        };
+        let plain = [0x11; 512];
+        let metadata = [0x22; 512];
+
+        io.write_with_flags(&plain, SectorId::new(1), 1, WriteFlags::empty())
+            .expect("an unflagged write needs no durability support");
+        io.write_with_flags(&metadata, SectorId::new(2), 1, WriteFlags::METADATA)
+            .expect("a metadata hint alone needs no durability support");
+        assert_eq!(
+            io.write_with_flags(
+                &metadata,
+                SectorId::new(3),
+                1,
+                WriteFlags::METADATA | WriteFlags::FUA
+            )
+            .expect_err("FUA with a metadata hint still requires backend support")
+            .kind(),
+            Ext4ErrorKind::Unsupported
+        );
+
+        let mut sectors = [0u8; 1536];
+        io.read(&mut sectors, SectorId::new(1), 3)
+            .expect("memory read must succeed");
+        assert_eq!(&sectors[..512], &plain);
+        assert_eq!(&sectors[512..1024], &metadata);
+        assert!(sectors[1024..].iter().all(|&byte| byte == 0));
+    }
+
+    #[test]
+    fn sector_id_conversions_report_overflow_instead_of_truncating() {
+        let small = SectorId::new(41);
+        assert_eq!(small.raw(), 41);
+        assert_eq!(small.as_usize(), Ok(41));
+        assert_eq!(small.to_u32(), Ok(41));
+        assert_eq!(small.checked_add(1), Ok(SectorId::new(42)));
+
+        let wide = SectorId::new(u64::from(u32::MAX) + 1);
+        assert_eq!(wide.to_u32().unwrap_err().kind(), Ext4ErrorKind::Overflow);
+        assert_eq!(
+            SectorId::new(u64::MAX).checked_add(1).unwrap_err().kind(),
+            Ext4ErrorKind::Overflow
+        );
+        assert_eq!(
+            SectorId::new(u64::MAX - 2).checked_add(2),
+            Ok(SectorId::new(u64::MAX))
+        );
+    }
+
+    #[test]
+    fn physical_block_size_override_keeps_logical_geometry() {
+        let geometry = DeviceGeometry::new(512, 8).with_physical_block_size(4096);
+        assert_eq!(geometry.logical_block_size, 512);
+        assert_eq!(geometry.physical_block_size, 4096);
+        assert_eq!(geometry.block_count, 8);
+        assert_eq!(DeviceGeometry::new(512, 8).physical_block_size, 512);
+    }
 }

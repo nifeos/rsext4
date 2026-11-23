@@ -20,3 +20,26 @@ impl core::fmt::Display for BitmapError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use alloc::string::ToString;
+
+    use super::*;
+
+    #[test]
+    fn display_names_each_bitmap_failure() {
+        assert_eq!(
+            BitmapError::IndexOutOfRange.to_string(),
+            "bitmap index out of range"
+        );
+        assert_eq!(
+            BitmapError::AlreadyAllocated.to_string(),
+            "bitmap entry is already allocated"
+        );
+        assert_eq!(
+            BitmapError::AlreadyFree.to_string(),
+            "bitmap entry is already free"
+        );
+    }
+}

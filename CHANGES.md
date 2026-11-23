@@ -14,13 +14,14 @@ issue and pull request do not exist yet.
 
 | fix | files | what it fixes | upstream |
 |---|---|---|---|
-| 2a | `src/extents_tree/remove.rs`, `tests/file_operations.rs` | shrinking an extent-mapped file past a whole index node wrote the emptied node back instead of freeing it | not yet filed |
-| 2b | `src/file/io.rs`, `tests/file_operations.rs` | a single-transaction truncate that failed after zeroing the tail of the retained block left the tail zeroed; the tail is now restored | not yet filed |
+| 2a | `src/extents_tree/remove.rs`, `tests/extent_truncate.rs` | shrinking an extent-mapped file past a whole index node wrote the emptied node back instead of freeing it | not yet filed |
+| 2b | `src/file/io.rs`, `tests/extent_truncate.rs` | a single-transaction truncate that failed after zeroing the tail of the retained block left the tail zeroed; the tail is now restored | not yet filed |
 | 4 | `fuzz/` (all files) | adds cargo-fuzz targets for the superblock, the group descriptor table, extent tree nodes, directory blocks, HTree lookup, mount and walk, and journal replay | not yet filed |
 | 5a | `src/crc32c/arm64.rs`, `src/crc32c/crc32c.rs` | states the safety argument at each `unsafe` use in the CRC32C code | not yet filed |
 | 5b | `src/blockgroup_description/table.rs`, `src/blockgroup_description/tests.rs`, `src/test_contracts.rs` | group descriptors were read by casting a byte offset in the table to `&Ext4GroupDesc`, which is undefined behavior on unaligned bytes, reads native byte order and always spans 64 bytes, so 32-byte descriptors read and wrote the next record; each record is now decoded at its own size (breaking: `get_desc` returns `Option<Ext4GroupDesc>`, and `set_desc` replaces `get_desc_mut`) | not yet filed |
 | 7 | `src/ext4/mount.rs`, `src/ext4/mkfs.rs`, `tests/error_handling.rs` | mount mapped every error from reading the superblock to a failed device read; it now reports the error itself, such as a block size the device cannot address, and still refuses a device with no ext4 file system as an invalid magic number | not yet filed |
 | 8 | `src/ext4/owned.rs`, `tests/integration_test.rs` | `InodeInfo` dropped the nanoseconds and the extra epoch bits of the inode times; `atime`, `ctime` and `mtime` are now `Ext4Timestamp`, and `btime` is `Option<Ext4Timestamp>` (breaking) | not yet filed |
+| tests | `src/bitmap/error.rs`, `src/cache/bitmap.rs`, `src/cache/inode_table.rs`, `src/crc32c/crc32c.rs`, `src/disknode/mod.rs`, `src/error/context.rs`, `src/extents_tree/convert.rs`, `src/file/mod.rs`, `src/hashtree/tests.rs`, `src/io.rs`, `tests/directory_entry_creation.rs`, `tests/owned_boundary.rs` | adds tests, and changes no other code, so every file reaches a line coverage of 85 percent: error text, the bitmap and inode table caches, the CRC32C table generator, device numbers, directory entry insertion, `mkdir` and file creation refusals, extent conversion on deep trees, and the owned API's directory cursors and special inodes | not yet filed |
 | 9 | `src/ext4/alloc.rs` | initializing an inode bitmap for an uninitialized group left the padding bits past the group's last inode clear, which e2fsck rejects | [issue 2824](https://github.com/rcore-os/tgoskits/issues/2824), [pull request 2825](https://github.com/rcore-os/tgoskits/pull/2825) |
 
 ## Changes only this fork needs
@@ -34,3 +35,6 @@ These are not meant for upstream.
 | `.github/` (the other files), `.githooks/`, `docs/stranger-test.md`, `CODEOWNERS`, `CONTRIBUTING.md`, `SECURITY.md`, `_typos.toml`, `deny.toml`, `rustfmt.toml` | added: the configuration of the shared crate workflows |
 | `README.md` | rewritten to say what the fork is and how to build and test it |
 | `CHANGES.md` | added: this file |
+| `LICENSE-APACHE` | added: a copy of upstream's `LICENSE`, the Apache License, Version 2.0, under the name the shared crate workflows read; `LICENSE` stays as upstream's |
+
+The repository's topics are `rust`, `no-std` and `filesystem`. The shared settings also give every crate repository `formal-verification` and `kani`, which this one leaves out until it carries Kani harnesses; after the shared settings are applied here again, remove those two topics.

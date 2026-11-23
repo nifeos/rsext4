@@ -10,7 +10,18 @@
 locale = "en-us"
 # The release workflow's two organization secret names, fixed by the shared release workflow. Their
 # first word reads as a misspelling to typos, and the names cannot change here.
-extend-ignore-identifiers-re = ["^[A-Z]+_SMELTER_(APP_ID|PRIVATE_KEY)$"]
+extend-ignore-identifiers-re = [
+    "^[A-Z]+_SMELTER_(APP_ID|PRIVATE_KEY)$",
+    # Upstream code, unchanged: names upstream's code uses, kept as written so the fork's fixes
+    # apply upstream. `orign_uuid` is in src/tool.rs, `can_recive_size` in src/ext4/mkfs.rs, and
+    # `BlcokGroupLayout` in a past entry of upstream's CHANGELOG.md.
+    "^orign_uuid$",
+    "^can_recive_size$",
+    "^BlcokGroupLayout$",
+]
+# Upstream code, unchanged: a comment in src/ext4/alloc.rs, kept as written so the fork's fixes
+# apply upstream.
+extend-ignore-re = ["lazy initialisation\\)"]
 
 [default.extend-words]
 # mke2fs, the e2fsprogs program that formats an ext4 image, which the tests and the fuzz seeds run.

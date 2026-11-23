@@ -213,6 +213,36 @@ mod tests {
         }
     }
 
+    #[test]
+    fn generated_tables_hold_the_crc_of_each_byte_followed_by_zero_bytes() {
+        // Calling the const fn at run time checks the table generator itself;
+        // the static tables are folded in at compile time.
+        let tables = generate_tables();
+        assert_eq!(tables, CRC32C_TABLES);
+        assert_eq!(tables[0][0x80], POLY);
+
+        for (zero_bytes, table) in tables.iter().enumerate() {
+            for (byte, &entry) in table.iter().enumerate() {
+                let mut message = [0u8; 8];
+                message[0] = byte as u8;
+                assert_eq!(
+                    entry,
+                    crc32c_update_bitwise(0, &message[..=zero_bytes]),
+                    "table={zero_bytes} byte={byte:#x}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn metadata_csum_detection_follows_the_read_only_compatible_bit() {
+        let mut sb = metadata_csum_superblock();
+        assert!(ext4_superblock_has_metadata_csum(&sb));
+
+        sb.s_feature_ro_compat &= !Ext4Superblock::EXT4_FEATURE_RO_COMPAT_METADATA_CSUM;
+        assert!(!ext4_superblock_has_metadata_csum(&sb));
+    }
+
     #[cfg(target_arch = "x86_64")]
     #[test]
     fn x86_64_hardware_crc_matches_software_for_unaligned_slices() {
