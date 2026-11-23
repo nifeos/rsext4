@@ -34,3 +34,5 @@ These are not meant for upstream.
 | `.github/` (the other files), `.githooks/`, `docs/stranger-test.md`, `CODEOWNERS`, `CONTRIBUTING.md`, `SECURITY.md`, `_typos.toml`, `deny.toml`, `rustfmt.toml` | added: the configuration of the shared crate workflows |
 | `README.md` | rewritten to say what the fork is and how to build and test it |
 | `CHANGES.md` | added: this file |
+
+The repository's topics are `rust`, `no-std` and `filesystem`. The shared settings also give every crate repository `formal-verification` and `kani`, which this one leaves out until it carries Kani harnesses; after `script/apply-settings` runs here, remove those two topics again.
