@@ -71,3 +71,36 @@ pub(crate) const fn directory_entry_type_for_mode(mode: u16) -> Option<u8> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn directory_entry_type_follows_the_inode_format_bits() {
+        let cases = [
+            (Ext4Inode::S_IFREG, Ext4DirEntry2::EXT4_FT_REG_FILE),
+            (Ext4Inode::S_IFDIR, Ext4DirEntry2::EXT4_FT_DIR),
+            (Ext4Inode::S_IFCHR, Ext4DirEntry2::EXT4_FT_CHRDEV),
+            (Ext4Inode::S_IFBLK, Ext4DirEntry2::EXT4_FT_BLKDEV),
+            (Ext4Inode::S_IFIFO, Ext4DirEntry2::EXT4_FT_FIFO),
+            (Ext4Inode::S_IFSOCK, Ext4DirEntry2::EXT4_FT_SOCK),
+            (Ext4Inode::S_IFLNK, Ext4DirEntry2::EXT4_FT_SYMLINK),
+        ];
+        for (format, entry_type) in cases {
+            // Permission and set-id bits must not change the derived type.
+            assert_eq!(
+                directory_entry_type_for_mode(format | Ext4Inode::S_ISUID | 0o755),
+                Some(entry_type),
+                "mode={format:#o}"
+            );
+        }
+    }
+
+    #[test]
+    fn directory_entry_type_is_absent_for_unrecognized_formats() {
+        assert_eq!(directory_entry_type_for_mode(0o644), None);
+        assert_eq!(directory_entry_type_for_mode(0o030_000), None);
+        assert_eq!(directory_entry_type_for_mode(Ext4Inode::S_IFMT), None);
+    }
+}
