@@ -301,3 +301,360 @@ pub struct CacheStats {
     pub dirty_entries: usize,
     pub max_entries: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{config::BLOCK_SIZE, disknode::Ext4Timestamp};
+
+    struct TestBlockDevice {
+        data: Vec<u8>,
+        fail_writes: bool,
+        read_calls: Vec<u64>,
+        write_calls: Vec<u64>,
+    }
+
+    impl TestBlockDevice {
+        fn new(blocks: usize) -> Self {
+            Self {
+                data: alloc::vec![0; blocks * BLOCK_SIZE],
+                fail_writes: false,
+                read_calls: Vec::new(),
+                write_calls: Vec::new(),
+            }
+        }
+
+        fn failing_writes(blocks: usize) -> Self {
+            Self {
+                fail_writes: true,
+                ..Self::new(blocks)
+            }
+        }
+
+        fn fill_block(&mut self, block: usize, value: u8) {
+            self.data[block * BLOCK_SIZE..(block + 1) * BLOCK_SIZE].fill(value);
+        }
+
+        fn block(&self, block: usize) -> &[u8] {
+            &self.data[block * BLOCK_SIZE..(block + 1) * BLOCK_SIZE]
+        }
+    }
+
+    impl BlockIo for TestBlockDevice {
+        fn read(
+            &mut self,
+            buffer: &mut [u8],
+            block_id: crate::io::SectorId,
+            _count: u32,
+        ) -> Ext4Result<()> {
+            self.read_calls.push(block_id.raw());
+            let start = block_id.as_usize()? * BLOCK_SIZE;
+            let source = self
+                .data
+                .get(start..start + buffer.len())
+                .ok_or_else(Ext4Error::io)?;
+            buffer.copy_from_slice(source);
+            Ok(())
+        }
+
+        fn write(
+            &mut self,
+            buffer: &[u8],
+            block_id: crate::io::SectorId,
+            _count: u32,
+        ) -> Ext4Result<()> {
+            if self.fail_writes {
+                return Err(Ext4Error::io());
+            }
+            self.write_calls.push(block_id.raw());
+            let start = block_id.as_usize()? * BLOCK_SIZE;
+            self.data[start..start + buffer.len()].copy_from_slice(buffer);
+            Ok(())
+        }
+
+        fn geometry(&self) -> crate::io::DeviceGeometry {
+            crate::io::DeviceGeometry::new(BLOCK_SIZE as u32, (self.data.len() / BLOCK_SIZE) as u64)
+        }
+
+        fn capabilities(&self) -> crate::io::DeviceCapabilities {
+            crate::io::DeviceCapabilities {
+                flush: true,
+                ..crate::io::DeviceCapabilities::default()
+            }
+        }
+
+        fn flush(&mut self) -> Ext4Result<()> {
+            Ok(())
+        }
+    }
+
+    impl crate::runtime::Clock for TestBlockDevice {
+        fn now(&self) -> Ext4Result<Ext4Timestamp> {
+            Ok(Ext4Timestamp::new(0, 0))
+        }
+    }
+
+    fn device_with(device: TestBlockDevice) -> Jbd2Dev<TestBlockDevice> {
+        Jbd2Dev::initial_jbd2dev(0, device, false)
+    }
+
+    #[test]
+    fn create_default_uses_configured_bitmap_capacity() {
+        let cache = BitmapCache::create_default();
+        let stats = cache.stats();
+        assert_eq!(stats.max_entries, BITMAP_CACHE_MAX);
+        assert_eq!(stats.total_entries, 0);
+        assert_eq!(stats.dirty_entries, 0);
+    }
+
+    #[test]
+    fn get_or_load_reads_each_bitmap_once_and_refreshes_its_access_state() {
+        let mut device = TestBlockDevice::new(64);
+        device.fill_block(7, 0xa5);
+        device.fill_block(8, 0x5a);
+        let mut jbd2_dev = device_with(device);
+        let mut cache = BitmapCache::new(4);
+        let block_key = CacheKey::new_block(BGIndex::new(0));
+        let inode_key = CacheKey::new_inode(BGIndex::new(0));
+        assert_ne!(block_key, inode_key);
+
+        let first = cache
+            .get_or_load(&mut jbd2_dev, block_key, AbsoluteBN::new(7))
+            .expect("load block bitmap");
+        assert_eq!(first.block_num, AbsoluteBN::new(7));
+        assert!(first.data.iter().all(|byte| *byte == 0xa5));
+        assert!(!first.dirty);
+        assert_eq!((first.last_access, first.generation), (1, 1));
+
+        let inode_bitmap = cache
+            .get_or_load(&mut jbd2_dev, inode_key, AbsoluteBN::new(8))
+            .expect("load inode bitmap");
+        assert!(inode_bitmap.data.iter().all(|byte| *byte == 0x5a));
+
+        let again = cache
+            .get_or_load(&mut jbd2_dev, block_key, AbsoluteBN::new(7))
+            .expect("reuse cached block bitmap");
+        assert_eq!((again.last_access, again.generation), (3, 2));
+        assert_eq!(
+            cache.get(&block_key).map(|bitmap| bitmap.generation),
+            Some(2)
+        );
+        assert_eq!(
+            cache.get_mut(&block_key).map(|bitmap| bitmap.last_access),
+            Some(4)
+        );
+        assert!(cache.get(&CacheKey::new_block(BGIndex::new(1))).is_none());
+        assert!(
+            cache
+                .get_mut(&CacheKey::new_block(BGIndex::new(1)))
+                .is_none()
+        );
+        assert_eq!(cache.stats().total_entries, 2);
+        assert_eq!(jbd2_dev.into_inner().read_calls, [7, 8]);
+    }
+
+    #[test]
+    fn failed_bitmap_read_keeps_cached_entry_resident() {
+        let mut jbd2_dev = device_with(TestBlockDevice::new(16));
+        let mut cache = BitmapCache::new(1);
+        let resident = CacheKey::new_block(BGIndex::new(0));
+        cache
+            .get_or_load(&mut jbd2_dev, resident, AbsoluteBN::new(3))
+            .expect("load resident bitmap");
+
+        cache
+            .get_or_load(
+                &mut jbd2_dev,
+                CacheKey::new_block(BGIndex::new(1)),
+                AbsoluteBN::new(1000),
+            )
+            .expect_err("a bitmap beyond the device must fail to load");
+
+        assert!(cache.get(&resident).is_some());
+        assert_eq!(cache.stats().total_entries, 1);
+    }
+
+    #[test]
+    fn full_cache_writes_back_dirty_least_recently_used_bitmap() {
+        let mut jbd2_dev = device_with(TestBlockDevice::new(64));
+        let mut cache = BitmapCache::new(2);
+        let first = CacheKey::new_block(BGIndex::new(0));
+        let second = CacheKey::new_block(BGIndex::new(1));
+        cache
+            .get_or_load(&mut jbd2_dev, first, AbsoluteBN::new(10))
+            .expect("load first");
+        cache
+            .get_or_load(&mut jbd2_dev, second, AbsoluteBN::new(11))
+            .expect("load second");
+        cache
+            .modify(&mut jbd2_dev, first, AbsoluteBN::new(10), |data| {
+                data[0] = 0xff;
+            })
+            .expect("modify first");
+        cache
+            .get_or_load(&mut jbd2_dev, second, AbsoluteBN::new(11))
+            .expect("touch second");
+
+        cache
+            .get_or_load(
+                &mut jbd2_dev,
+                CacheKey::new_block(BGIndex::new(2)),
+                AbsoluteBN::new(12),
+            )
+            .expect("load third and evict first");
+
+        assert!(cache.get(&first).is_none());
+        assert!(cache.get(&second).is_some());
+        assert_eq!(cache.stats().total_entries, 2);
+        let device = jbd2_dev.into_inner();
+        assert_eq!(device.block(10)[0], 0xff);
+        assert!(device.block(10)[1..].iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn dirty_eviction_write_failure_keeps_victim_cached() {
+        let mut jbd2_dev = device_with(TestBlockDevice::failing_writes(64));
+        let mut cache = BitmapCache::new(1);
+        let victim = CacheKey::new_inode(BGIndex::new(0));
+        cache
+            .get_or_load(&mut jbd2_dev, victim, AbsoluteBN::new(10))
+            .expect("load victim");
+        cache.mark_dirty(&victim);
+
+        cache
+            .get_or_load(
+                &mut jbd2_dev,
+                CacheKey::new_inode(BGIndex::new(1)),
+                AbsoluteBN::new(11),
+            )
+            .expect_err("writeback failure must abort the load");
+
+        assert!(cache.get(&victim).expect("victim stays").dirty);
+        assert_eq!(cache.stats().total_entries, 1);
+    }
+
+    #[test]
+    fn modify_defers_writeback_until_flush_when_multilevel_cache_is_enabled() {
+        let mut jbd2_dev = device_with(TestBlockDevice::new(64));
+        let mut cache = BitmapCache::new(4);
+        let key = CacheKey::new_block(BGIndex::new(0));
+        cache
+            .modify(&mut jbd2_dev, key, AbsoluteBN::new(20), |data| {
+                data[..2].copy_from_slice(&[0x0f, 0xf0]);
+            })
+            .expect("modify bitmap");
+
+        let cached = cache.get(&key).expect("modified bitmap is cached");
+        assert_eq!(cached.data[..2], [0x0f, 0xf0]);
+        assert_eq!(cached.dirty, USE_MULTILEVEL_CACHE);
+        assert_eq!(
+            cache.stats().dirty_entries,
+            usize::from(USE_MULTILEVEL_CACHE)
+        );
+
+        cache.flush(&mut jbd2_dev, &key).expect("flush bitmap");
+        cache
+            .flush(&mut jbd2_dev, &CacheKey::new_inode(BGIndex::new(0)))
+            .expect("flushing an absent bitmap is a no-op");
+        assert_eq!(cache.stats().dirty_entries, 0);
+        assert!(!cache.get(&key).expect("still cached").dirty);
+        let device = jbd2_dev.into_inner();
+        assert_eq!(device.block(20)[..2], [0x0f, 0xf0]);
+        assert_eq!(device.write_calls, [20]);
+    }
+
+    #[test]
+    fn failed_flush_keeps_bitmap_dirty() {
+        let mut jbd2_dev = device_with(TestBlockDevice::failing_writes(64));
+        let mut cache = BitmapCache::new(4);
+        let key = CacheKey::new_block(BGIndex::new(0));
+        cache
+            .get_or_load(&mut jbd2_dev, key, AbsoluteBN::new(5))
+            .expect("load bitmap");
+        cache.mark_dirty(&key);
+
+        cache
+            .flush(&mut jbd2_dev, &key)
+            .expect_err("flush must report the write failure");
+        cache
+            .flush_all(&mut jbd2_dev)
+            .expect_err("flush_all must report the write failure");
+        cache
+            .evict(&mut jbd2_dev, &key)
+            .expect_err("evict must report the write failure");
+
+        assert!(cache.get(&key).expect("bitmap stays cached").dirty);
+        assert_eq!(cache.stats().dirty_entries, 1);
+    }
+
+    #[test]
+    fn flush_all_writes_dirty_bitmaps_in_block_order_and_cleans_them() {
+        let mut device = TestBlockDevice::new(64);
+        device.fill_block(30, 0x30);
+        device.fill_block(20, 0x20);
+        let mut jbd2_dev = device_with(device);
+        let mut cache = BitmapCache::new(4);
+        let high = CacheKey::new_block(BGIndex::new(0));
+        let low = CacheKey::new_block(BGIndex::new(1));
+        let clean = CacheKey::new_inode(BGIndex::new(0));
+        for (key, block) in [(high, 30), (low, 20), (clean, 25)] {
+            cache
+                .get_or_load(&mut jbd2_dev, key, AbsoluteBN::new(block))
+                .expect("load bitmap");
+        }
+        cache.mark_dirty(&high);
+        cache.mark_dirty(&low);
+        cache.mark_dirty(&CacheKey::new_inode(BGIndex::new(9)));
+        assert_eq!(cache.stats().dirty_entries, 2);
+
+        cache.flush_all(&mut jbd2_dev).expect("flush all bitmaps");
+
+        assert_eq!(cache.stats().dirty_entries, 0);
+        assert_eq!(cache.stats().total_entries, 3);
+        let device = jbd2_dev.into_inner();
+        assert_eq!(device.write_calls, [20, 30]);
+        assert!(device.block(20).iter().all(|byte| *byte == 0x20));
+        assert!(device.block(30).iter().all(|byte| *byte == 0x30));
+    }
+
+    #[test]
+    fn evict_writes_only_dirty_bitmaps_before_dropping_them() {
+        let mut jbd2_dev = device_with(TestBlockDevice::new(64));
+        let mut cache = BitmapCache::new(4);
+        let dirty = CacheKey::new_block(BGIndex::new(0));
+        let clean = CacheKey::new_block(BGIndex::new(1));
+        cache
+            .get_or_load(&mut jbd2_dev, dirty, AbsoluteBN::new(40))
+            .expect("load dirty");
+        cache
+            .get_or_load(&mut jbd2_dev, clean, AbsoluteBN::new(41))
+            .expect("load clean");
+        cache.mark_dirty(&dirty);
+
+        cache.evict(&mut jbd2_dev, &dirty).expect("evict dirty");
+        cache.evict(&mut jbd2_dev, &clean).expect("evict clean");
+        cache
+            .evict(&mut jbd2_dev, &CacheKey::new_inode(BGIndex::new(0)))
+            .expect("evicting an absent bitmap is a no-op");
+
+        assert_eq!(cache.stats().total_entries, 0);
+        assert_eq!(jbd2_dev.into_inner().write_calls, [40]);
+    }
+
+    #[test]
+    fn clear_drops_dirty_bitmaps_without_writing_them() {
+        let mut jbd2_dev = device_with(TestBlockDevice::new(64));
+        let mut cache = BitmapCache::new(4);
+        let key = CacheKey::new_block(BGIndex::new(0));
+        cache
+            .get_or_load(&mut jbd2_dev, key, AbsoluteBN::new(6))
+            .expect("load bitmap");
+        cache.mark_dirty(&key);
+
+        cache.clear();
+
+        assert!(cache.get(&key).is_none());
+        assert_eq!(cache.stats().total_entries, 0);
+        assert!(jbd2_dev.into_inner().write_calls.is_empty());
+    }
+}
