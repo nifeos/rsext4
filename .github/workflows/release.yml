@@ -1,125 +1,31 @@
-name: Release
-
+name: release
 on:
-  push:
-    tags:
-      - 'v*.*.*'
-      - 'v*.*.*-pre.*'
-
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to release, matching the manifest (e.g. 0.1.0).
+        required: true
+        type: string
+      dry-run:
+        description: Rehearse without tagging or publishing.
+        type: boolean
+        default: true
+      publish:
+        description: Publish to crates.io after tagging. False tags and stops, with no approval step.
+        type: boolean
+        default: false
 permissions:
-  contents: write
-
+  contents: read
 jobs:
-  check:
-    uses: ./.github/workflows/check.yml
-
-  test:
-    uses: ./.github/workflows/test.yml
-    needs: check
-
-  create-release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: check
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Validate tag and branch (HEAD-based)
-        shell: bash
-        run: |
-          set -e
-
-          TAG="${{ github.ref_name }}"
-          TAG_COMMIT=$(git rev-list -n 1 "$TAG")
-
-          git fetch origin main dev
-
-          MAIN_HEAD=$(git rev-parse origin/main)
-          DEV_HEAD=$(git rev-parse origin/dev)
-
-          echo "Tag:        $TAG"
-          echo "Tag commit: $TAG_COMMIT"
-          echo "main HEAD:  $MAIN_HEAD"
-          echo "dev  HEAD:  $DEV_HEAD"
-
-          if [[ "$TAG" == *-pre.* ]]; then
-            if [ "$TAG_COMMIT" != "$DEV_HEAD" ]; then
-              echo "❌ prerelease tag must be created from dev HEAD"
-              exit 1
-            fi
-            echo "✅ prerelease tag validated on dev"
-          else
-            if [ "$TAG_COMMIT" != "$MAIN_HEAD" ]; then
-              echo "❌ stable release tag must be created from main HEAD"
-              exit 1
-            fi
-            echo "✅ stable release tag validated on main"
-          fi
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-pre.') }}
-          body: |
-            ## ${{ github.ref_name }}
-
-            - [Documentation](https://docs.rs/rsext4)
-            - [crates.io](https://crates.io/crates/rsext4)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  publish-crates:
-    name: Publish to crates.io
-    runs-on: ubuntu-latest
-    needs: check
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Validate tag and branch (HEAD-based)
-        shell: bash
-        run: |
-          set -e
-
-          TAG="${{ github.ref_name }}"
-          TAG_COMMIT=$(git rev-list -n 1 "$TAG")
-
-          git fetch origin main dev
-
-          MAIN_HEAD=$(git rev-parse origin/main)
-          DEV_HEAD=$(git rev-parse origin/dev)
-
-          echo "Tag:        $TAG"
-          echo "Tag commit: $TAG_COMMIT"
-          echo "main HEAD:  $MAIN_HEAD"
-          echo "dev  HEAD:  $DEV_HEAD"
-
-          if [[ "$TAG" == *-pre.* ]]; then
-            if [ "$TAG_COMMIT" != "$DEV_HEAD" ]; then
-              echo "❌ prerelease tag must be created from dev HEAD"
-              exit 1
-            fi
-            echo "✅ prerelease tag validated on dev"
-          else
-            if [ "$TAG_COMMIT" != "$MAIN_HEAD" ]; then
-              echo "❌ stable release tag must be created from main HEAD"
-              exit 1
-            fi
-            echo "✅ stable release tag validated on main"
-          fi
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly-2025-08-15
-
-      - name: Publish to crates.io
-        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+  release:
+    permissions:
+      contents: read
+      id-token: write
+    uses: nifeos/crate-workflows/.github/workflows/release.yml@7686d5bf752584f87ce96b46017ede92ed6ba10d
+    with:
+      version: ${{ inputs.version }}
+      dry-run: ${{ inputs.dry-run }}
+      publish: ${{ inputs.publish }}
+    secrets:
+      NIFE_SMELTER_APP_ID: ${{ secrets.NIFE_SMELTER_APP_ID }}
+      NIFE_SMELTER_PRIVATE_KEY: ${{ secrets.NIFE_SMELTER_PRIVATE_KEY }}
