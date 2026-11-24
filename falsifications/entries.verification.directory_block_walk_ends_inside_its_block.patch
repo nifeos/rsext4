@@ -1,0 +1,20 @@
+Falsifies `rsext4::entries::verification::directory_block_walk_ends_inside_its_block`.
+
+The defect: the block walk no longer checks that a record fits in what is left of the block, so
+a record length past the end reads outside it.
+
+Expected to fail: the slice index of the record.
+
+diff --git a/src/entries/iterator.rs b/src/entries/iterator.rs
+index e07e7af..075889b 100644
+--- a/src/entries/iterator.rs
++++ b/src/entries/iterator.rs
+@@ -77,7 +77,7 @@ impl<'a> Iterator for DirEntryIterator<'a> {
+             }
+ 
+             let rec_len = u16::from_le_bytes([remaining[4], remaining[5]]);
+-            if rec_len < 8 || rec_len as usize > remaining.len() {
++            if rec_len < 8 {
+                 return None;
+             }
+ 

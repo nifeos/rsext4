@@ -1,0 +1,19 @@
+Falsifies `rsext4::superblock::verification::superblock_decode_reads_only_its_record`.
+
+The defect: the decode reads one more word before `s_checksum`, which moves the checksum to
+bytes 1024 to 1027, past the end of the record.
+
+Expected to fail: the slice index in `read_u32_le`.
+
+diff --git a/src/superblock/disk.rs b/src/superblock/disk.rs
+index 9a2afcf..78f0753 100644
+--- a/src/superblock/disk.rs
++++ b/src/superblock/disk.rs
+@@ -174,6 +174,7 @@ impl DiskFormat for Ext4Superblock {
+         sb.s_orphan_file_inum = read_u32!();
+ 
+         sb.s_reserved = read_u32_array!(94);
++        let _ = read_u32!();
+         sb.s_checksum = read_u32!();
+ 
+         let _ = offset;

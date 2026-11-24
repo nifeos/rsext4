@@ -1,0 +1,23 @@
+Falsifies `rsext4::blockgroup_description::verification::group_descriptor_decode_is_total_and_stays_in_its_record`.
+
+The defect: the record size check accepts any size from 32 bytes, so a record of 33 to 63
+bytes is decoded as a 64-byte one.
+
+Expected to fail: the harness's `assert!(accepted)`, or the slice index of a field past the record.
+
+diff --git a/src/blockgroup_description/disk.rs b/src/blockgroup_description/disk.rs
+index ae55623..0e221a6 100644
+--- a/src/blockgroup_description/disk.rs
++++ b/src/blockgroup_description/disk.rs
+@@ -33,10 +33,7 @@ impl Ext4GroupDesc {
+     }
+ 
+     const fn is_supported_record_size(size: usize) -> bool {
+-        size == Self::GOOD_OLD_DESC_SIZE
+-            || (size >= Self::EXT4_DESC_SIZE_64BIT
+-                && size <= Self::MAX_DESC_SIZE
+-                && size.is_power_of_two())
++        size >= Self::GOOD_OLD_DESC_SIZE
+     }
+ 
+     fn from_validated_disk_bytes(bytes: &[u8]) -> Self {

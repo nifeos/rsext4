@@ -18,3 +18,7 @@ thiserror = { version = "2", default-features = false }
 default = ["USE_MULTILEVEL_CACHE"]
 host-test = []
 USE_MULTILEVEL_CACHE = [] #启用多级缓存
+
+# `cfg(kani)` is set by the Kani model checker, which proves this crate's harnesses.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

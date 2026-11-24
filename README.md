@@ -47,7 +47,21 @@ filesystem.unmount()?;
 
 ## What is proven
 
-Nothing yet. The crate carries no Kani harnesses; adding them is open work.
+Eight Kani harnesses prove the on-disk parsers, each for every input up to the bound it states:
+
+- decoding a superblock, a group descriptor, an extent header, extent or extent index, or a
+  directory entry never panics and reads only inside the slice it was given;
+- the group descriptor decode accepts exactly the record sizes ext4 defines;
+- an extent tree node holds no more entries than fit after its header;
+- a directory block walk ends, and every entry it yields lies inside its record and its block;
+- the software CRC32C's one-byte step, and every entry of its slicing tables, equal the bitwise
+  definition.
+
+Each harness sits in a `verification` module beside the code it proves, behind `#[cfg(kani)]`,
+and each has a patch in [falsifications/](falsifications/) that breaks the property and must turn
+the harness red. Run them with `cargo kani`. The bounds are small (24 bytes for the directory and
+extent tree walks, 128 for the group descriptor), so a defect that needs a longer input is not
+ruled out.
 
 ## Building and testing
 

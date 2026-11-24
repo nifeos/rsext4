@@ -1,0 +1,20 @@
+Falsifies `rsext4::crc32c::crc32c::verification::software_crc32c_tail_step_equals_bitwise_definition`.
+
+The defect: the one-byte step shifts the accumulator by seven bits instead of eight, so every
+buffer shorter than eight bytes, and the tail of every longer one, gets a wrong checksum.
+
+Expected to fail: the harness's first `assert_eq!`, the step against the bitwise definition.
+
+diff --git a/src/crc32c/crc32c.rs b/src/crc32c/crc32c.rs
+index 840f6ff..0bea965 100644
+--- a/src/crc32c/crc32c.rs
++++ b/src/crc32c/crc32c.rs
+@@ -73,7 +73,7 @@ fn crc32c_update(mut crc: u32, data: &[u8]) -> u32 {
+         remaining = &remaining[8..];
+     }
+     for &byte in remaining {
+-        crc = CRC32C_TABLES[0][((crc ^ u32::from(byte)) & 0xff) as usize] ^ (crc >> 8);
++        crc = CRC32C_TABLES[0][((crc ^ u32::from(byte)) & 0xff) as usize] ^ (crc >> 7);
+     }
+     crc
+ }
