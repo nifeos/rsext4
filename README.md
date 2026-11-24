@@ -50,7 +50,7 @@ filesystem.unmount()?;
 Eight Kani harnesses prove the on-disk parsers, each for every input up to the bound it states:
 
 - decoding a superblock, a group descriptor, an extent header, extent or extent index, or a
-  directory entry never panics and reads only inside the slice it was given;
+  directory entry never panics and reads only inside the slice it receives;
 - the group descriptor decode accepts exactly the record sizes ext4 defines;
 - an extent tree node holds no more entries than fit after its header;
 - a directory block walk ends, and every entry it yields lies inside its record and its block;
