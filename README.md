@@ -54,8 +54,8 @@ Eight Kani harnesses prove the on-disk parsers, each for every input up to the b
 - the group descriptor decode accepts exactly the record sizes ext4 defines;
 - an extent tree node holds no more entries than fit after its header;
 - a directory block walk ends, and every entry it yields lies inside its record and its block;
-- the software CRC32C's one-byte step, and every entry of its slicing tables, equal the bitwise
-  definition.
+- the one-byte step of the software Castagnoli cyclic redundancy check (CRC32C), and every entry
+  of its slicing tables, equal the bitwise definition.
 
 Each harness sits in a `verification` module beside the code it proves, behind `#[cfg(kani)]`,
 and each has a patch in [falsifications/](falsifications/) that breaks the property and must turn

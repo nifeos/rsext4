@@ -3,8 +3,8 @@
 //!
 //! The harnesses call `crc32c_update`, the software path, directly. `crc32c_append` takes the
 //! hardware path when the CPU reports it, and that path is one instruction, not code a prover
-//! reads. The polynomial below is written as RFC 3720 appendix B.4 gives it, rather than taken
-//! from the module, so a wrong constant cannot prove itself right.
+//! reads. The polynomial below follows Request for Comments (RFC) 3720 appendix B.4 rather than
+//! the module, so a wrong constant cannot prove itself right.
 
 use super::*;
 
@@ -46,8 +46,9 @@ fn software_crc32c_tail_step_equals_bitwise_definition() {
 ///
 /// What this does not prove: that a whole round with an arbitrary seed and word equals the
 /// bitwise definition. That follows from the entries because CRC32C without its initial and final
-/// values is linear over GF(2), so a round is the exclusive or of one entry per byte. Kani does
-/// not check that step, because the solver does not finish the whole round in fifteen minutes.
+/// values is linear over the field of two elements, so a round is the exclusive or of one entry
+/// per byte. Kani does not check that step, because the solver does not finish the whole round in
+/// fifteen minutes.
 #[kani::proof]
 #[kani::unwind(9)]
 fn software_crc32c_tables_equal_bitwise_definition() {
