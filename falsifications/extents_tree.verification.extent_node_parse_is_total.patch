@@ -1,0 +1,33 @@
+Falsifies `rsext4::extents_tree::verification::extent_node_parse_is_total`.
+
+The defect: the node parse drops both guards on a leaf entry, the `max > capacity` term of the
+geometry check and the truncated entry test in the leaf loop, so a header that claims more
+entries than the node holds reads past the slice. Either guard alone holds the claim, which is
+why the patch drops both.
+
+Expected to fail: the slice index of the leaf entry.
+
+diff --git a/src/extents_tree/parse.rs b/src/extents_tree/parse.rs
+index 7255d4c..b04dcd8 100644
+--- a/src/extents_tree/parse.rs
++++ b/src/extents_tree/parse.rs
+@@ -38,7 +38,8 @@ impl<'a> ExtentTree<'a> {
+         let max = header.eh_max as usize;
+         let entry_size = Ext4Extent::disk_size();
+         let capacity = bytes.len().saturating_sub(hdr_size) / entry_size;
+-        if max == 0 || entries > max || max > capacity || header.eh_depth > Self::MAX_DEPTH {
++        let _ = capacity;
++        if max == 0 || entries > max || header.eh_depth > Self::MAX_DEPTH {
+             return Err(Ext4Error::corrupted().with_operation("extent:header_geometry"));
+         }
+         if header.eh_depth > 0 && entries == 0 {
+@@ -52,9 +53,6 @@ impl<'a> ExtentTree<'a> {
+             let mut vec = Vec::with_capacity(entries);
+             let et_size = Ext4Extent::disk_size();
+             for _ in 0..entries {
+-                if offset + et_size > bytes.len() {
+-                    return Err(Ext4Error::corrupted().with_operation("extent:entry_truncated"));
+-                }
+                 let et = Ext4Extent::from_disk_bytes(&bytes[offset..offset + et_size]);
+                 vec.push(et);
+                 offset += et_size;

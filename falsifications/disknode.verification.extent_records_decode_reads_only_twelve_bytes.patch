@@ -1,0 +1,20 @@
+Falsifies `rsext4::disknode::verification::extent_records_decode_reads_only_twelve_bytes`.
+
+The defect: the extent decode reads `ee_start_lo` from bytes 9 to 12, one byte past the
+twelve-byte record.
+
+Expected to fail: the slice index in the extent decode.
+
+diff --git a/src/disknode/disk_format.rs b/src/disknode/disk_format.rs
+index f2a4f01..7c5c32a 100644
+--- a/src/disknode/disk_format.rs
++++ b/src/disknode/disk_format.rs
+@@ -76,7 +76,7 @@ impl DiskFormat for Ext4Extent {
+             ee_block: read_u32_le(&bytes[0..4]),
+             ee_len: read_u16_le(&bytes[4..6]),
+             ee_start_hi: read_u16_le(&bytes[6..8]),
+-            ee_start_lo: read_u32_le(&bytes[8..12]),
++            ee_start_lo: read_u32_le(&bytes[9..13]),
+         }
+     }
+ 

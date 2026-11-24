@@ -1,0 +1,20 @@
+Falsifies `rsext4::entries::verification::directory_entry_parse_is_total`.
+
+The defect: the entry parse no longer checks that the name fits in the slice, so a name length
+past the end reads outside it.
+
+Expected to fail: the slice index of the name.
+
+diff --git a/src/entries/iterator.rs b/src/entries/iterator.rs
+index e07e7af..29aea3f 100644
+--- a/src/entries/iterator.rs
++++ b/src/entries/iterator.rs
+@@ -24,7 +24,7 @@ impl<'a> Ext4DirEntryInfo<'a> {
+         let name_len = data[6] as usize;
+         let file_type = data[7];
+ 
+-        if rec_len < 8 || name_len > 255 || data.len() < 8 + name_len {
++        if rec_len < 8 || name_len > 255 {
+             return None;
+         }
+ 
