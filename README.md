@@ -1,9 +1,9 @@
 # rsext4
 
-[![check](https://github.com/nifeos/rsext4/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nifeos/rsext4/actions/workflows/ci.yml?query=branch%3Amain)
-[![proofs](https://github.com/nifeos/rsext4/actions/workflows/proofs.yml/badge.svg?branch=main)](https://github.com/nifeos/rsext4/actions/workflows/proofs.yml?query=branch%3Amain)
-[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/nifeos/rsext4#license)
-[![minimum Rust version](https://img.shields.io/badge/rust-1.94%2B-blue.svg)](https://github.com/nifeos/rsext4/blob/main/Cargo.toml)
+[![check](https://github.com/partsfoundry/rsext4/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/partsfoundry/rsext4/actions/workflows/ci.yml?query=branch%3Amain)
+[![proofs](https://github.com/partsfoundry/rsext4/actions/workflows/proofs.yml/badge.svg?branch=main)](https://github.com/partsfoundry/rsext4/actions/workflows/proofs.yml?query=branch%3Amain)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/partsfoundry/rsext4#license)
+[![minimum Rust version](https://img.shields.io/badge/rust-1.94%2B-blue.svg)](https://github.com/partsfoundry/rsext4/blob/main/Cargo.toml)
 
 A `no_std` ext4 file system in Rust: mount, read, write, format and journal replay over any block
 device that implements `BlockIo`.
