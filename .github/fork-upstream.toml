@@ -1,5 +1,5 @@
 # This repository is a fork of rsext4 as published by rcore-os/tgoskits under fs/rsext4. check /
-# standalone (helpers/standalone.py in partsfoundry/crate-workflows) reads this file, holds the crate to
+# standalone (helpers/standalone.py in nifeos/crate-workflows) reads this file, holds the crate to
 # upstream's license field and lint table at this commit, and runs every other check.
 repository = "https://github.com/rcore-os/tgoskits"
 commit = "bd0153f7d336e3106ea6fd78b3a7ef2fe256d906"

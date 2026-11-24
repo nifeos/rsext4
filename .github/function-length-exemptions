@@ -1,5 +1,5 @@
 # Code another project owns, which this fork keeps as written so its fixes apply upstream
-# (helpers/exemptions_file.py in partsfoundry/crate-workflows). Each entry holds the measured length;
+# (helpers/exemptions_file.py in nifeos/crate-workflows). Each entry holds the measured length;
 # a change to it fails until the entry changes too. Code the fork writes meets the limit in full.
 # <path> <function> <code lines> <reason>
 src/dir/bootstrap.rs create_lost_found_directory 101 upstream code, unchanged

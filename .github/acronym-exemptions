@@ -1,5 +1,5 @@
 # Code another project owns, which this fork keeps as written so its fixes apply upstream
-# (helpers/exemptions_file.py in partsfoundry/crate-workflows). Each entry covers the first use of one
+# (helpers/exemptions_file.py in nifeos/crate-workflows). Each entry covers the first use of one
 # token in one file. Prose the fork writes expands every acronym.
 # <path> <token> <reason>
 README_CN.md TGOSKits upstream code, unchanged
