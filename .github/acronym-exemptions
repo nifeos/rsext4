@@ -35,7 +35,6 @@ tests/metadata_lifecycle.rs IDs upstream code, unchanged
 src/blockdev/cached_device.rs RMW upstream code, unchanged
 src/blockdev/cached_device.rs JBD2 upstream code, unchanged
 src/cache/bitmap.rs LRU upstream code, unchanged
-src/checksum/core.rs CRC32C upstream code, unchanged
 src/checksum/dirblock.rs HTree upstream code, unchanged
 src/checksum/journal.rs CRC32 upstream code, unchanged
 src/crc32c/arm64.rs ARMv8 upstream code, unchanged
