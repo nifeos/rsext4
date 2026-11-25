@@ -152,7 +152,7 @@ impl Ext4Superblock {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use super::*;
     use crate::{ErrorContext, Ext4ErrorKind, FeatureSet};

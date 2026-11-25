@@ -3,6 +3,9 @@
 //! Every case fixes one observable result so an error-path regression cannot
 //! be reported as a passing test.
 
+// Miri runs only the tests that reach unsafe code, and this file reaches none.
+#![cfg(not(miri))]
+
 use std::{cell::Cell, rc::Rc};
 
 use rsext4::{

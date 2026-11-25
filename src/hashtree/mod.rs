@@ -22,5 +22,5 @@ pub(crate) use readdir::{
 };
 pub use types::{HashTreeNode, HashTreeSearchResult};
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests;

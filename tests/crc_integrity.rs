@@ -6,6 +6,9 @@
 //! File payload blocks themselves are not covered because this implementation
 //! does not currently expose a data-block CRC feature.
 
+// Miri runs only the tests that reach unsafe code, and this file reaches none.
+#![cfg(not(miri))]
+
 use std::{
     cell::{Cell, RefCell},
     collections::BTreeSet,

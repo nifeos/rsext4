@@ -908,7 +908,7 @@ fn is_fast_symlink(filesystem: &Ext4FileSystem, inode: &Ext4Inode) -> bool {
         && inode.blocks_count(filesystem.block_size() as u32, huge_file) == 0
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use alloc::vec;
     use core::{cell::Cell, mem::size_of};

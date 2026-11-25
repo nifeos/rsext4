@@ -3,6 +3,9 @@
 //! The suite focuses on common file workflows and records a few implementation
 //! details that intentionally differ from a fully POSIX-like filesystem.
 
+// Miri runs only the tests that reach unsafe code, and this file reaches none.
+#![cfg(not(miri))]
+
 use std::{cell::Cell, rc::Rc};
 
 use rsext4::{

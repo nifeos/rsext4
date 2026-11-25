@@ -42,7 +42,7 @@ impl fmt::Display for ErrorContext {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use alloc::string::ToString;
 

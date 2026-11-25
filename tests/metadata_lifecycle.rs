@@ -3,6 +3,9 @@
 //! These tests focus on the higher-level metadata contract: when timestamps
 //! advance, when `i_dtime` changes, and how inheritance behaves on new inodes.
 
+// Miri runs only the tests that reach unsafe code, and this file reaches none.
+#![cfg(not(miri))]
+
 use std::cell::Cell;
 
 use rsext4::{

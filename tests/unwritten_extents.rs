@@ -1,5 +1,8 @@
 //! Linux-compatible unwritten extent semantics.
 
+// Miri runs only the tests that reach unsafe code, and this file reaches none.
+#![cfg(not(miri))]
+
 use std::{cell::Cell, rc::Rc};
 
 use rsext4::{

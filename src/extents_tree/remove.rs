@@ -551,7 +551,7 @@ impl<'a> ExtentTree<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     extern crate std;
 

@@ -1129,7 +1129,7 @@ pub fn delete_file<B: BlockIo>(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use super::*;
     use crate::entries::{Ext4DirEntry2, decode_directory_record_length};

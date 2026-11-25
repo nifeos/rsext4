@@ -16,7 +16,7 @@ pub use time::{Ext4TimeSpec, Ext4Timestamp};
 
 #[cfg(kani)]
 mod verification;
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use super::*;
 

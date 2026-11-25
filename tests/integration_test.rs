@@ -3,6 +3,9 @@
 //! These tests exercise mkfs, mount, directory creation, file IO, and the
 //! public API surface together so regressions show up as user-visible failures.
 
+// Miri runs only the tests that reach unsafe code, and this file reaches none.
+#![cfg(not(miri))]
+
 use std::{
     cell::Cell,
     sync::{

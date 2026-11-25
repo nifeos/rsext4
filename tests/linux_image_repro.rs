@@ -1,3 +1,6 @@
+// Miri runs only the tests that reach unsafe code, and this file reaches none.
+#![cfg(not(miri))]
+
 // Host tests must link the external lock/task provider.
 use std::{
     cell::{Cell, RefCell},
