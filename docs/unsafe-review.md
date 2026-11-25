@@ -71,14 +71,14 @@ fixes all three.
 
 ## What this review could not verify
 
-- The aarch64 code (rows 4 to 10 and 13) was reasoned about and linted for
-  `aarch64-unknown-none-softfloat`, but not run: the CI runners and the reviewing host are x86_64,
-  and no aarch64 emulator was at hand. Its tests run only on an aarch64 host.
-- The aarch64 test target with std was not installed, so the `#[cfg]` change in row 13 was checked
-  for syntax on x86_64 only.
-- The Linux behavior relied on in rows 13 and 17 (`HWCAP_CRC32` sanitised across CPUs and refused
-  on a late CPU; synchronous migration in `sched_setaffinity`) is taken from the kernel's
-  documented behavior, not tested.
+- This review reasoned about the aarch64 code (rows 4 to 10 and 13) and linted it for
+  `aarch64-unknown-none-softfloat`, but did not run it: the CI runners and the reviewing host are
+  x86_64, and no aarch64 emulator was at hand. Its tests run only on an aarch64 host.
+- The reviewing host lacks the aarch64 test target with std, so only an x86_64 build checked the
+  syntax of the `#[cfg]` change in row 13.
+- Rows 13 and 17 rely on Linux behavior (the kernel sanitises `HWCAP_CRC32` across CPUs and
+  refuses a late CPU without it; `sched_setaffinity` migrates the thread before it returns) that
+  this review takes from the kernel's documented behavior and did not test.
 - Miri runs weekly on x86_64 and ignores the hardware tests, since it does not run inline assembly.
   Of the uses above, only rows 11 and 18 run under Miri.
 - No Kani harness covers the hardware CRC32C paths; the harnesses cover the software CRC32C and
