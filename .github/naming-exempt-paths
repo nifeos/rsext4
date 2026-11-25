@@ -1,5 +1,5 @@
 # Paths the naming checks of `check / standalone` skip (helpers/naming_exempt_paths.py in
-# nifeos/crate-workflows). Every other gate still reads them.
+# partsfoundry/crate-workflows). Every other gate still reads them.
 src/ upstream rsext4 code from rcore-os/tgoskits fs/rsext4 keeps upstream's names
 tests/ upstream rsext4 code from rcore-os/tgoskits fs/rsext4 keeps upstream's names
 examples/ upstream rsext4 code from rcore-os/tgoskits fs/rsext4 keeps upstream's names
