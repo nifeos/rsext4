@@ -29,6 +29,16 @@ upstream release carries it.
 | tests | `src/bitmap/error.rs`, `src/cache/bitmap.rs`, `src/cache/inode_table.rs`, `src/crc32c/crc32c.rs`, `src/disknode/mod.rs`, `src/error/context.rs`, `src/extents_tree/convert.rs`, `src/file/mod.rs`, `src/hashtree/tests.rs`, `src/io.rs`, `tests/directory_entry_creation.rs`, `tests/owned_boundary.rs` | adds tests, and changes no other code, so every file reaches a line coverage of 85 percent: error text, the bitmap and inode table caches, the CRC32C table generator, device numbers, directory entry insertion, `mkdir` and file creation refusals, extent conversion on deep trees, and the owned API's directory cursors and special inodes | not yet filed |
 | 9 | `src/ext4/alloc.rs` | initializing an inode bitmap for an uninitialized group left the padding bits past the group's last inode clear, which e2fsck rejects | [issue 2824](https://github.com/rcore-os/tgoskits/issues/2824), [pull request 2825](https://github.com/rcore-os/tgoskits/pull/2825), merged |
 
+## Fixes taken from upstream after 0.9.2
+
+Upstream fixed these after the release this fork starts from, inside larger changes this fork does
+not take. Each row is the smallest part of upstream's change that fixes the fault, with upstream's
+test.
+
+| files | what it fixes | upstream |
+|---|---|---|
+| `src/hashtree/mutation.rs`, `tests/directory_operations.rs` | growing an indexed directory by one block set the inode's block count after the extent tree had added its leaf and index blocks to it, so the count left them out and e2fsck reported a short `i_blocks`; the data block is now counted before the extent is inserted | part of commit `dde4020be` ([pull request 2525](https://github.com/rcore-os/tgoskits/pull/2525)), merged |
+
 ## Changes only this fork needs
 
 These are not meant for upstream.
