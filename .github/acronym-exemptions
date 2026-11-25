@@ -29,11 +29,11 @@ src/tool.rs UUID upstream code, unchanged
 tests/crc_integrity.rs CRC upstream code, unchanged
 tests/error_handling.rs IO upstream code, unchanged
 tests/file_operations.rs POSIX upstream code, unchanged
-tests/file_operations.rs EOF upstream code, unchanged
+tests/extent_restart.rs EOF fix 2b, as upstream pull request 2829 writes it
 tests/file_operations.rs AOF upstream code, unchanged
 tests/metadata_lifecycle.rs IDs upstream code, unchanged
 src/blockdev/cached_device.rs RMW upstream code, unchanged
-src/blockdev/cached_device.rs JBD2 upstream code, unchanged
+tests/extent_restart.rs JBD2 fix 2b, as upstream pull request 2829 writes it
 src/cache/bitmap.rs LRU upstream code, unchanged
 src/checksum/dirblock.rs HTree upstream code, unchanged
 src/checksum/journal.rs CRC32 upstream code, unchanged

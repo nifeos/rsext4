@@ -1101,6 +1101,10 @@ fn append_directory_block<B: BlockIo>(
     accounting_check.set_blocks_count(updated_blocks, block_size as u32, huge_file_feature)?;
 
     let new_block = fs.alloc_block(device)?;
+    // Account the data block before the extent tree adds any split/index
+    // blocks. Writing the pre-insertion count afterward would erase those
+    // metadata increments. The enclosing metadata transaction owns rollback.
+    parent_inode.set_blocks_count(updated_blocks, block_size as u32, huge_file_feature)?;
     if fs.superblock.has_extents() && parent_inode.uses_extents() {
         let extent = crate::disknode::Ext4Extent::new(new_logical, new_block.raw(), 1);
         ExtentTree::with_filesystem(parent_inode, fs, parent_ino)
@@ -1109,7 +1113,6 @@ fn append_directory_block<B: BlockIo>(
         parent_inode.i_block[old_blocks] = new_block.to_u32()?;
     }
     parent_inode.set_size(new_size as u64);
-    parent_inode.set_blocks_count(updated_blocks, block_size as u32, huge_file_feature)?;
     Ok((new_logical, new_block))
 }
 

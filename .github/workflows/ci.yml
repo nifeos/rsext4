@@ -18,3 +18,16 @@ jobs:
     with:
       # Bare-metal targets the crate builds for, space-separated; empty for a host-only crate.
       targets: aarch64-unknown-none-softfloat riscv64imac-unknown-none-elf x86_64-unknown-none
+  # Upstream also tests the crate with USE_MULTILEVEL_CACHE off (the `no-default-features` host
+  # test profile in tgoskits), where a write reaches the device without waiting in the cache. The
+  # shared `tests` job runs the default features only, so this job runs the other profile.
+  tests-no-default-features:
+    name: tests (no default features)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal
+      - run: cargo +stable test --no-default-features

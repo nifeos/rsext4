@@ -2,4 +2,3 @@
 #   src/lib.rs:4 # swapping the operand order is the same arithmetic
 # A line without a reason is refused, and a line naming a survivor that no longer exists is
 # refused too, so this list can only shrink by a diff that says why.
-src/file/io.rs:1635 # the guard `zeroed` set to false survives because the mutation run builds the default feature USE_MULTILEVEL_CACHE, where the data block cache writes nothing through and `modify` cannot fail after its closure runs; without that feature, tests/extent_truncate.rs failed_tail_zeroing_write_restores_the_retained_block catches it, and failed_read_of_the_retained_block_aborts_the_truncate_without_a_restore catches the guard set to true in either build

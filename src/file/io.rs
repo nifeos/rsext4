@@ -1046,13 +1046,32 @@ fn finalize_restarted_inode_update<B: BlockIo>(
     Ok(())
 }
 
-fn begin_restarted_truncate<B: BlockIo>(
+/// Publishes and commits the new size and an orphan record before a user
+/// shrink zeroes its EOF tail or detaches its mappings in more than one
+/// transaction, and returns whether it did.
+///
+/// The tail is zeroed in place, outside any transaction, so a rollback or a
+/// journal recovery cannot bring it back. Committing first orders it: before
+/// this commit, a failure or a crash leaves the old size over an intact tail;
+/// after it, orphan recovery finishes the shrink and zeroes the tail. Without
+/// the commit, these updates would stay in the running transaction, and a
+/// failed or interrupted commit of that transaction would bring back the old
+/// size over a zeroed tail. A shrink to a block boundary that fits in one
+/// transaction zeroes nothing and needs neither. Orphan recovery and the
+/// final reap shrink an inode whose size is already on disk.
+fn publish_truncate_before_zeroing<B: BlockIo>(
     device: &mut Jbd2Dev<B>,
     fs: &mut Ext4FileSystem,
     inode_num: InodeNumber,
     inode: &mut Ext4Inode,
     truncate_size: u64,
-) -> Ext4Result<()> {
+    purpose: TruncatePurpose,
+    restarts: bool,
+) -> Ext4Result<bool> {
+    let zeroes_tail = !truncate_size.is_multiple_of(fs.block_size() as u64);
+    if purpose != TruncatePurpose::UserResize || !(restarts || zeroes_tail) {
+        return Ok(false);
+    }
     let original_inode = *inode;
     let updated = fs.with_metadata_transaction(device, 2, |fs, device| {
         let mut updated = original_inode;
@@ -1071,7 +1090,8 @@ fn begin_restarted_truncate<B: BlockIo>(
         Ok(updated)
     })?;
     *inode = updated;
-    Ok(())
+    device.commit()?;
+    Ok(true)
 }
 
 fn finish_orphaned_truncate<B: BlockIo>(
@@ -1551,108 +1571,20 @@ fn zero_mapped_inode_tail<B: BlockIo>(
     inode: &mut Ext4Inode,
     size: u64,
 ) -> Ext4Result<()> {
-    zero_mapped_inode_tail_with_undo(device, fs, inode_num, inode, size).map(drop)
-}
-
-/// The bytes that zeroing a retained EOF block replaced.
-///
-/// A shrink zeroes the tail of the block it keeps before it changes any
-/// mapping, so a corrupt hidden branch still fails in the plan preflight.
-/// When the metadata transaction that follows fails and rolls back, the file
-/// keeps its old size, so these bytes are visible again and must be put back.
-struct ZeroedTail {
-    physical: AbsoluteBN,
-    offset: usize,
-    bytes: Vec<u8>,
-}
-
-impl ZeroedTail {
-    /// Writes the replaced bytes back into the cached block.
-    fn restore<B: BlockIo>(
-        self,
-        device: &mut Jbd2Dev<B>,
-        fs: &mut Ext4FileSystem,
-    ) -> Ext4Result<()> {
-        fs.datablock_cache.modify(device, self.physical, |block| {
-            block[self.offset..].copy_from_slice(&self.bytes)
-        })
-    }
-
-    /// Restores the replaced bytes after `error` failed the operation that
-    /// zeroed them, and returns the error to report.
-    ///
-    /// That is `error` when the bytes are back, and the restore's own error
-    /// when they are not, since the file has then lost them.
-    fn restore_after<B: BlockIo>(
-        self,
-        device: &mut Jbd2Dev<B>,
-        fs: &mut Ext4FileSystem,
-        error: Ext4Error,
-    ) -> Ext4Error {
-        match self.restore(device, fs) {
-            Ok(()) => error,
-            Err(restore_error) => restore_error.with_operation("rollback:truncate_tail_restore"),
-        }
-    }
-}
-
-/// Zeroes the retained EOF block's tail and returns what it replaced.
-fn zero_mapped_inode_tail_with_undo<B: BlockIo>(
-    device: &mut Jbd2Dev<B>,
-    fs: &mut Ext4FileSystem,
-    inode_num: InodeNumber,
-    inode: &mut Ext4Inode,
-    size: u64,
-) -> Ext4Result<Option<ZeroedTail>> {
     let block_size = fs.block_size();
     let block_bytes = block_size as u64;
     let tail_offset = size % block_bytes;
     if tail_offset == 0 {
-        return Ok(None);
+        return Ok(());
     }
 
     let logical = u32::try_from(size / block_bytes).map_err(|_| Ext4Error::file_too_large())?;
     let Some(physical) = resolve_inode_block(fs, device, inode_num, inode, logical)? else {
-        return Ok(None);
+        return Ok(());
     };
-    let offset = usize::try_from(tail_offset).map_err(|_| Ext4Error::overflow())?;
-    let mut bytes = Vec::new();
-    let mut zeroed = false;
-    let zeroing = fs.datablock_cache.modify(device, physical, |block| {
-        bytes.extend_from_slice(&block[offset..]);
-        block[offset..].fill(0);
-        zeroed = true;
-    });
-    let zeroed_tail = ZeroedTail {
-        physical,
-        offset,
-        bytes,
-    };
-    match zeroing {
-        Ok(()) => Ok(Some(zeroed_tail)),
-        // The write-through can fail after the cached block was zeroed and
-        // marked dirty, so the tail is put back before the error is returned.
-        Err(error) if zeroed => Err(zeroed_tail.restore_after(device, fs, error)),
-        Err(error) => Err(error),
-    }
-}
-
-/// Puts a zeroed tail back when the shrink that zeroed it failed.
-///
-/// The shrink's own error is returned when the bytes are restored. When the
-/// restore fails too, its error is returned instead, with the operation
-/// `rollback:truncate_tail_restore`, so the caller knows the file lost the
-/// bytes and not only that the shrink failed.
-fn restore_tail_on_error<B: BlockIo, T>(
-    device: &mut Jbd2Dev<B>,
-    fs: &mut Ext4FileSystem,
-    zeroed_tail: Option<ZeroedTail>,
-    result: Ext4Result<T>,
-) -> Ext4Result<T> {
-    match (result, zeroed_tail) {
-        (Err(error), Some(zeroed_tail)) => Err(zeroed_tail.restore_after(device, fs, error)),
-        (result, _) => result,
-    }
+    let tail_offset = usize::try_from(tail_offset).map_err(|_| Ext4Error::overflow())?;
+    fs.datablock_cache
+        .modify(device, physical, |block| block[tail_offset..].fill(0))
 }
 
 fn append_extent_logical_blocks<B: BlockIo>(
@@ -1827,16 +1759,17 @@ fn truncate_inode_mapping<B: BlockIo>(
                 u64::from(u32::MAX) + 1,
                 &removal,
             )?;
-            let zeroed_tail =
-                zero_mapped_inode_tail_with_undo(device, fs, inode_num, &mut inode, truncate_size)?;
+            let published = publish_truncate_before_zeroing(
+                device,
+                fs,
+                inode_num,
+                &mut inode,
+                truncate_size,
+                purpose,
+                restart_limit.is_some(),
+            )?;
+            zero_mapped_inode_tail(device, fs, inode_num, &mut inode, truncate_size)?;
             if let Some(credit_limit) = restart_limit {
-                // A restarted shrink commits in several transactions, and an
-                // earlier one may already be durable, so its zeroed tail is
-                // not put back.
-                drop(zeroed_tail);
-                if purpose == TruncatePurpose::UserResize {
-                    begin_restarted_truncate(device, fs, inode_num, &mut inode, truncate_size)?;
-                }
                 remove_extent_mapping_with_restarts(
                     device,
                     fs,
@@ -1846,23 +1779,19 @@ fn truncate_inode_mapping<B: BlockIo>(
                     u64::from(u32::MAX) + 1,
                     credit_limit,
                 )?;
-                return if purpose == TruncatePurpose::UserResize {
-                    finish_orphaned_truncate(device, fs, inode_num)
-                } else {
+                if !published {
                     inode.i_size_lo = truncate_size as u32;
                     inode.i_size_high = (truncate_size >> 32) as u32;
-                    finalize_restarted_inode_update(
+                    return finalize_restarted_inode_update(
                         device,
                         fs,
                         inode_num,
                         &mut inode,
                         Ext4InodeMetadataUpdate::truncate_access(),
-                    )
-                };
+                    );
+                }
             } else {
-                // One transaction carries the whole shrink and rolls back on
-                // failure, so the zeroed tail is put back with it.
-                let result = commit_extent_mapping_removal(
+                commit_extent_mapping_removal(
                     device,
                     fs,
                     inode_num,
@@ -1873,9 +1802,12 @@ fn truncate_inode_mapping<B: BlockIo>(
                         start: MetadataTransactionStart::Join,
                         payload: removal,
                     },
-                );
-                return restore_tail_on_error(device, fs, zeroed_tail, result);
+                )?;
+                if !published {
+                    return Ok(());
+                }
             }
+            return finish_orphaned_truncate(device, fs, inode_num);
         }
 
         inode.i_size_lo = (truncate_size & 0xffff_ffff) as u32;
@@ -1903,14 +1835,17 @@ fn truncate_inode_mapping<B: BlockIo>(
     // Linux zeros the retained partial EOF block before detaching later
     // mappings. A corrupt hidden branch therefore still fails during the plan
     // preflight before any data or metadata is changed.
-    let zeroed_tail =
-        zero_mapped_inode_tail_with_undo(device, fs, inode_num, &mut inode, truncate_size)?;
+    let published = publish_truncate_before_zeroing(
+        device,
+        fs,
+        inode_num,
+        &mut inode,
+        truncate_size,
+        purpose,
+        restart_limit.is_some(),
+    )?;
+    zero_mapped_inode_tail(device, fs, inode_num, &mut inode, truncate_size)?;
     if let Some(credit_limit) = restart_limit {
-        // As for extents: a restarted shrink keeps its zeroed tail.
-        drop(zeroed_tail);
-        if purpose == TruncatePurpose::UserResize {
-            begin_restarted_truncate(device, fs, inode_num, &mut inode, truncate_size)?;
-        }
         remove_legacy_mapping_with_restarts(
             device,
             fs,
@@ -1920,21 +1855,19 @@ fn truncate_inode_mapping<B: BlockIo>(
             u64::from(u32::MAX) + 1,
             credit_limit,
         )?;
-        if purpose == TruncatePurpose::UserResize {
-            finish_orphaned_truncate(device, fs, inode_num)
-        } else {
+        if !published {
             inode.i_size_lo = truncate_size as u32;
             inode.i_size_high = (truncate_size >> 32) as u32;
-            finalize_restarted_inode_update(
+            return finalize_restarted_inode_update(
                 device,
                 fs,
                 inode_num,
                 &mut inode,
                 Ext4InodeMetadataUpdate::truncate_access(),
-            )
+            );
         }
     } else {
-        let result = commit_legacy_mapping_removal(
+        commit_legacy_mapping_removal(
             device,
             fs,
             inode_num,
@@ -1945,9 +1878,12 @@ fn truncate_inode_mapping<B: BlockIo>(
                 start: MetadataTransactionStart::Join,
                 payload: transaction,
             },
-        );
-        restore_tail_on_error(device, fs, zeroed_tail, result)
+        )?;
+        if !published {
+            return Ok(());
+        }
     }
+    finish_orphaned_truncate(device, fs, inode_num)
 }
 
 fn read_symlink_target<B: BlockIo>(
