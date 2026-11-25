@@ -1046,6 +1046,15 @@ fn finalize_restarted_inode_update<B: BlockIo>(
     Ok(())
 }
 
+/// Publishes the new size and the orphan record of a restarted shrink and
+/// commits them.
+///
+/// The caller zeroes the retained EOF tail only after this returns. Without
+/// the commit, these updates would stay in the running transaction for the
+/// first removal step to join, and a failure or a crash before that
+/// transaction committed would bring back the old size over a zeroed tail.
+/// Once this succeeds, orphan recovery finishes the shrink and zeroes the
+/// tail after a crash.
 fn begin_restarted_truncate<B: BlockIo>(
     device: &mut Jbd2Dev<B>,
     fs: &mut Ext4FileSystem,
@@ -1071,7 +1080,7 @@ fn begin_restarted_truncate<B: BlockIo>(
         Ok(updated)
     })?;
     *inode = updated;
-    Ok(())
+    device.commit()
 }
 
 fn finish_orphaned_truncate<B: BlockIo>(
@@ -1827,16 +1836,18 @@ fn truncate_inode_mapping<B: BlockIo>(
                 u64::from(u32::MAX) + 1,
                 &removal,
             )?;
-            let zeroed_tail =
-                zero_mapped_inode_tail_with_undo(device, fs, inode_num, &mut inode, truncate_size)?;
             if let Some(credit_limit) = restart_limit {
-                // A restarted shrink commits in several transactions, and an
-                // earlier one may already be durable, so its zeroed tail is
-                // not put back.
-                drop(zeroed_tail);
+                // A restarted shrink commits in several transactions, so it
+                // cannot roll the tail back with them. For a user truncate
+                // the tail is zeroed only after the new size and the orphan
+                // record have committed: before that, a failure or a crash
+                // leaves the old size with its tail intact, and after it,
+                // orphan recovery zeroes the tail. Recovery and reap
+                // shrink an inode whose size is already published.
                 if purpose == TruncatePurpose::UserResize {
                     begin_restarted_truncate(device, fs, inode_num, &mut inode, truncate_size)?;
                 }
+                zero_mapped_inode_tail(device, fs, inode_num, &mut inode, truncate_size)?;
                 remove_extent_mapping_with_restarts(
                     device,
                     fs,
@@ -1862,6 +1873,13 @@ fn truncate_inode_mapping<B: BlockIo>(
             } else {
                 // One transaction carries the whole shrink and rolls back on
                 // failure, so the zeroed tail is put back with it.
+                let zeroed_tail = zero_mapped_inode_tail_with_undo(
+                    device,
+                    fs,
+                    inode_num,
+                    &mut inode,
+                    truncate_size,
+                )?;
                 let result = commit_extent_mapping_removal(
                     device,
                     fs,
@@ -1903,14 +1921,13 @@ fn truncate_inode_mapping<B: BlockIo>(
     // Linux zeros the retained partial EOF block before detaching later
     // mappings. A corrupt hidden branch therefore still fails during the plan
     // preflight before any data or metadata is changed.
-    let zeroed_tail =
-        zero_mapped_inode_tail_with_undo(device, fs, inode_num, &mut inode, truncate_size)?;
     if let Some(credit_limit) = restart_limit {
-        // As for extents: a restarted shrink keeps its zeroed tail.
-        drop(zeroed_tail);
+        // As for extents: a user truncate zeroes the tail only after the new
+        // size and the orphan record have committed.
         if purpose == TruncatePurpose::UserResize {
             begin_restarted_truncate(device, fs, inode_num, &mut inode, truncate_size)?;
         }
+        zero_mapped_inode_tail(device, fs, inode_num, &mut inode, truncate_size)?;
         remove_legacy_mapping_with_restarts(
             device,
             fs,
@@ -1934,6 +1951,8 @@ fn truncate_inode_mapping<B: BlockIo>(
             )
         }
     } else {
+        let zeroed_tail =
+            zero_mapped_inode_tail_with_undo(device, fs, inode_num, &mut inode, truncate_size)?;
         let result = commit_legacy_mapping_removal(
             device,
             fs,
