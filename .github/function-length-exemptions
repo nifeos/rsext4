@@ -16,7 +16,7 @@ src/extents_tree/remove.rs ExtentTree::remove_extent 469 upstream code, plus 2 l
 src/extents_tree/remove.rs remove_extent::leaf_step 130 upstream code, unchanged
 src/file/create.rs create_inode_at_inner 217 upstream code, unchanged
 src/file/delete.rs delete_dir 131 upstream code, unchanged
-src/file/io.rs truncate_inode_mapping 163 upstream code, plus 6 lines of fix 2b, which upstream pull request 2829 adds to the same function
+src/file/io.rs truncate_inode_mapping 173 upstream code, plus 16 lines of fixes 2b and 2c, which upstream pull requests 2829 and 2845 add to the same function
 src/file/io.rs write_inode_data_through_unwritten 193 upstream code, unchanged
 src/file/xattr.rs persist_xattrs 140 upstream code, unchanged
 src/file/xattr.rs parse_xattrs 103 upstream code, unchanged
@@ -40,6 +40,7 @@ src/test_contracts.rs rsext4_extent_tree_lookup_and_run_rules_hold 266 upstream 
 src/test_contracts.rs rsext4_dirblock_checksum_edge_rules_hold 117 upstream code, unchanged
 src/test_contracts.rs rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold 779 upstream code, unchanged
 tests/extent_restart.rs build_large_legacy_fixture 129 upstream code, unchanged
+tests/extent_restart.rs assert_first_restart_commit 111 fix 2b, as upstream pull request 2829 adds it
 tests/file_operations.rs failed_legacy_truncate_bitmap_write_restores_mapping_and_accounting 118 upstream code, unchanged
 tests/integration_test.rs owned_mount_injects_clock_separately_from_block_io 132 upstream code, unchanged
 tests/linux_image_repro.rs linux_indexed_directory_lookup_uses_on_disk_htree_root 161 upstream code, unchanged

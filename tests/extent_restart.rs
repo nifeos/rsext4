@@ -34,6 +34,8 @@ struct PowerCutProbe {
     commit_trigger: Cell<Option<u32>>,
     commit_writes: Cell<u32>,
     commits_before_cut: Cell<Option<u32>>,
+    failed_commit_trigger: Cell<Option<u32>>,
+    cut_before_commit_trigger: Cell<Option<u32>>,
 }
 
 impl PowerCutProbe {
@@ -41,6 +43,8 @@ impl PowerCutProbe {
         self.commit_trigger.set(None);
         self.commit_writes.set(0);
         self.commits_before_cut.set(None);
+        self.failed_commit_trigger.set(None);
+        self.cut_before_commit_trigger.set(None);
     }
 
     fn arm_committed_transaction_power_cut(&self, occurrence: u32) {
@@ -49,8 +53,26 @@ impl PowerCutProbe {
         self.commit_trigger.set(Some(occurrence));
     }
 
+    /// Fails the `occurrence`th JBD2 commit-block write without writing it,
+    /// so that transaction never becomes durable.
+    fn arm_failed_commit(&self, occurrence: u32) {
+        assert!(occurrence > 0, "failed-commit occurrence must be positive");
+        self.reset_observation();
+        self.failed_commit_trigger.set(Some(occurrence));
+    }
+
+    /// Cuts power just before the `occurrence`th JBD2 commit-block write, so
+    /// that transaction never becomes durable.
+    fn arm_power_cut_before_commit(&self, occurrence: u32) {
+        assert!(occurrence > 0, "power-cut occurrence must be positive");
+        self.reset_observation();
+        self.cut_before_commit_trigger.set(Some(occurrence));
+    }
+
     fn disable(&self) {
         self.commit_trigger.set(None);
+        self.failed_commit_trigger.set(None);
+        self.cut_before_commit_trigger.set(None);
     }
 }
 
@@ -86,6 +108,26 @@ impl BlockIo for RestartDevice {
             self.power_cut
                 .commit_writes
                 .set(self.power_cut.commit_writes.get() + 1);
+            if let Some(occurrence) = self.power_cut.failed_commit_trigger.get() {
+                if occurrence == 1 {
+                    self.power_cut.failed_commit_trigger.set(None);
+                    return Err(Ext4Error::io());
+                }
+                self.power_cut
+                    .failed_commit_trigger
+                    .set(Some(occurrence - 1));
+            }
+            if let Some(occurrence) = self.power_cut.cut_before_commit_trigger.get() {
+                if occurrence == 1 {
+                    self.power_cut
+                        .commits_before_cut
+                        .set(Some(self.power_cut.commit_writes.get() - 1));
+                    panic!("simulated power loss before a JBD2 commit block");
+                }
+                self.power_cut
+                    .cut_before_commit_trigger
+                    .set(Some(occurrence - 1));
+            }
         }
         let start = sector.as_usize()? * BLOCK_SIZE;
         let end = start
@@ -195,7 +237,9 @@ fn large_extent_range_removal_restarts_across_small_journal_transactions() {
 fn large_extent_truncate_recovery_resumes_after_transaction_boundary_power_cut() {
     let mut fixture = build_large_extent_fixture("/restart-crash");
     install_small_journal(&mut fixture);
-    fixture.power_cut.arm_committed_transaction_power_cut(1);
+    // The first commit carries the new size and the orphan record, and the
+    // second the first removal chunk.
+    fixture.power_cut.arm_committed_transaction_power_cut(2);
 
     let power_cut = catch_unwind(AssertUnwindSafe(|| {
         truncate_inode(
@@ -215,8 +259,8 @@ fn large_extent_truncate_recovery_resumes_after_transaction_boundary_power_cut()
         .get()
         .expect("power cut must record the durable commit count");
     assert_eq!(
-        commits_before_cut, 1,
-        "the first removal chunk must be durable"
+        commits_before_cut, 2,
+        "the new size and the first removal chunk must be durable"
     );
 
     let LargeExtentFixture {
@@ -249,6 +293,160 @@ fn large_extent_truncate_recovery_resumes_after_transaction_boundary_power_cut()
             expected_size: 0,
         },
     );
+}
+
+/// The size that orphan recovery keeps, past the 32 bits of `i_size_lo`.
+const FOUR_GIBIBYTES: u64 = 1 << 32;
+
+/// A ring small enough that removing the two-group mapping past four
+/// gibibytes restarts its transaction, and large enough for each chunk.
+const LEGACY_ORPHAN_JOURNAL: u32 = 24;
+
+/// Shortens the inode's recorded size to `size` and makes it the orphan head,
+/// as an interrupted truncate leaves it, then remounts so recovery truncates.
+fn remount_after_orphaned_truncate_to(
+    mut journal: Jbd2Dev<RestartDevice>,
+    mut filesystem: Ext4FileSystem,
+    inode_number: InodeNumber,
+    size: u64,
+    power_cut: &PowerCutProbe,
+) -> (Jbd2Dev<RestartDevice>, Ext4FileSystem) {
+    filesystem
+        .modify_inode(&mut journal, inode_number, |inode| {
+            inode.i_size_lo = size as u32;
+            inode.i_size_high = (size >> 32) as u32;
+            inode.i_dtime = 0;
+        })
+        .expect("shortened inode size must commit");
+    filesystem.superblock.s_last_orphan = inode_number.raw();
+    filesystem
+        .sync_superblock(&mut journal)
+        .expect("orphan head must persist");
+    filesystem
+        .sync_filesystem(&mut journal)
+        .expect("fixture sync failed");
+    journal.umount_commit().expect("fixture commit failed");
+    drop(filesystem);
+    let device = journal.into_inner();
+    power_cut.reset_observation();
+    let mut remount_device = Jbd2Dev::initial_jbd2dev(0, device, true);
+    let remounted =
+        Ext4FileSystem::mount(&mut remount_device).expect("mount must recover the orphan");
+    (remount_device, remounted)
+}
+
+#[test]
+fn restarted_extent_orphan_recovery_keeps_a_size_past_four_gibibytes() {
+    let first_logical = (FOUR_GIBIBYTES / BLOCK_SIZE as u64) as u32;
+    let mut fixture = build_large_extent_fixture_from("/orphan-past-4gib", first_logical);
+    install_small_journal(&mut fixture);
+    let LargeExtentFixture {
+        journal,
+        filesystem,
+        inode_number,
+        logical_blocks,
+        data_blocks,
+        gap_blocks,
+        external_blocks,
+        free_before,
+        power_cut,
+        ..
+    } = fixture;
+    let (mut remount_device, mut remounted) = remount_after_orphaned_truncate_to(
+        journal,
+        filesystem,
+        inode_number,
+        FOUR_GIBIBYTES,
+        &power_cut,
+    );
+    assert!(
+        power_cut.commit_writes.get() > 2,
+        "recovery must remove the extents across several transactions, saw {}",
+        power_cut.commit_writes.get()
+    );
+    assert_eq!(remounted.superblock.s_last_orphan, 0);
+    assert_removed_extent_state(
+        &mut remount_device,
+        &mut remounted,
+        RemovedExtentExpectation {
+            inode_number,
+            logical_blocks,
+            data_blocks: &data_blocks,
+            gap_blocks: &gap_blocks,
+            external_blocks: &external_blocks,
+            free_before,
+            expected_size: FOUR_GIBIBYTES,
+        },
+    );
+}
+
+#[test]
+fn restarted_legacy_orphan_recovery_keeps_a_size_past_four_gibibytes() {
+    let mut fixture = build_large_legacy_fixture("/legacy-orphan-past-4gib");
+    // Move the group-zero data block from logical 0 to the second entry of the
+    // triple-indirect leaf, past four gibibytes, so the removal past that size
+    // spans two allocation groups and no longer fits one transaction.
+    let direct_data = fixture.removed_blocks[0];
+    let triple_leaf = fixture.removed_blocks[9];
+    write_pointer_entry(&mut fixture.journal, triple_leaf, 1, direct_data);
+    let mut removed_past_size = vec![direct_data];
+    removed_past_size.extend_from_slice(&fixture.removed_blocks[7..]);
+    fixture
+        .filesystem
+        .modify_inode(&mut fixture.journal, fixture.inode_number, |inode| {
+            inode.i_block[0] = 0;
+            let size = (12 + 1024 + 1024 * 1024 + 2) * BLOCK_SIZE as u64;
+            inode.i_size_lo = size as u32;
+            inode.i_size_high = (size >> 32) as u32;
+        })
+        .expect("moved mapping must commit");
+    fixture
+        .filesystem
+        .sync_filesystem(&mut fixture.journal)
+        .expect("moved mapping sync failed");
+    fixture
+        .journal
+        .flush()
+        .expect("moved mapping checkpoint failed");
+    install_journal_with_maxlen_raw(
+        &mut fixture.journal,
+        &fixture.filesystem,
+        LEGACY_ORPHAN_JOURNAL,
+    );
+    let LargeLegacyFixture {
+        journal,
+        filesystem,
+        inode_number,
+        power_cut,
+        ..
+    } = fixture;
+    let (mut remount_device, mut remounted) = remount_after_orphaned_truncate_to(
+        journal,
+        filesystem,
+        inode_number,
+        FOUR_GIBIBYTES,
+        &power_cut,
+    );
+    assert!(
+        power_cut.commit_writes.get() > 2,
+        "recovery must remove the branch past four gibibytes across several transactions, saw {}",
+        power_cut.commit_writes.get()
+    );
+    assert_eq!(remounted.superblock.s_last_orphan, 0);
+    let inode = remounted
+        .get_inode_by_num(&mut remount_device, inode_number)
+        .expect("recovered inode read failed");
+    assert_eq!(inode.size(), FOUR_GIBIBYTES);
+    assert_eq!(
+        inode.i_block[14], 0,
+        "the triple-indirect branch must be gone"
+    );
+    for block in removed_past_size {
+        assert!(
+            !bitmap_block_is_allocated(&mut remounted, &mut remount_device, block),
+            "removed block {block:?} past four gibibytes must be free"
+        );
+    }
 }
 
 #[test]
@@ -463,7 +661,9 @@ fn large_legacy_punch_remains_consistent_after_committed_transaction_power_cut()
 fn large_legacy_truncate_recovery_resumes_after_committed_transaction_power_cut() {
     let mut fixture = build_large_legacy_fixture("/legacy-restart-crash");
     install_journal_with_maxlen_raw(&mut fixture.journal, &fixture.filesystem, 24);
-    fixture.power_cut.arm_committed_transaction_power_cut(1);
+    // The first commit carries the new size and the orphan record, and the
+    // second the first truncate chunk.
+    fixture.power_cut.arm_committed_transaction_power_cut(2);
 
     let power_cut = catch_unwind(AssertUnwindSafe(|| {
         truncate_inode(
@@ -483,8 +683,8 @@ fn large_legacy_truncate_recovery_resumes_after_committed_transaction_power_cut(
         .get()
         .expect("power cut must record the durable commit count");
     assert_eq!(
-        commits_before_cut, 1,
-        "the first truncate chunk must be durable before power loss"
+        commits_before_cut, 2,
+        "the new size and the first truncate chunk must be durable before power loss"
     );
 
     let device = fixture.journal.into_inner();
@@ -595,6 +795,525 @@ fn zero_link_legacy_reap_restarts_before_final_inode_transaction() {
     );
 }
 
+#[test]
+fn failed_first_restart_transaction_restores_the_extent_tail() {
+    let mut fixture = build_large_extent_fixture("/restart-tail-extent");
+    install_small_journal(&mut fixture);
+    let retained_block = fixture.data_blocks[0];
+    assert_failed_first_restart_transaction_restores_tail(
+        &mut fixture.journal,
+        &mut fixture.filesystem,
+        fixture.inode_number,
+        retained_block,
+    );
+}
+
+#[test]
+fn failed_first_restart_transaction_restores_the_legacy_tail() {
+    let mut fixture = build_restarting_legacy_tail_fixture("/restart-tail-legacy");
+    let retained_block = fixture.removed_blocks[0];
+    assert_failed_first_restart_transaction_restores_tail(
+        &mut fixture.journal,
+        &mut fixture.filesystem,
+        fixture.inode_number,
+        retained_block,
+    );
+}
+
+/// Builds an indirect-block file whose shrink to a partial first block
+/// restarts.
+fn build_restarting_legacy_tail_fixture(path: &str) -> LargeLegacyFixture {
+    let mut fixture = build_large_legacy_fixture(path);
+    // Map a second group-zero block behind the retained one, so the shrink
+    // still detaches blocks from both allocation groups and must restart.
+    let second_direct = fixture.gap_blocks[0];
+    fixture
+        .filesystem
+        .modify_inode(&mut fixture.journal, fixture.inode_number, |inode| {
+            inode.i_block[1] = second_direct.to_u32().expect("direct block number");
+            inode.i_blocks_lo += (BLOCK_SIZE / 512) as u32;
+        })
+        .expect("second direct mapping failed");
+    fixture
+        .filesystem
+        .sync_filesystem(&mut fixture.journal)
+        .expect("fixture sync failed");
+    fixture.journal.flush().expect("fixture checkpoint failed");
+    install_journal_with_maxlen_raw(&mut fixture.journal, &fixture.filesystem, 24);
+    fixture
+}
+
+/// Fails the size-and-orphan transaction that starts a restarted shrink and
+/// checks that the file keeps its old size and every byte of its EOF block.
+fn assert_failed_first_restart_transaction_restores_tail(
+    journal: &mut Jbd2Dev<RestartDevice>,
+    filesystem: &mut Ext4FileSystem,
+    inode_number: InodeNumber,
+    retained_block: AbsoluteBN,
+) {
+    filesystem
+        .datablock_cache
+        .modify(journal, retained_block, |block| {
+            for (index, byte) in block.iter_mut().enumerate() {
+                *byte = (index % 251) as u8 + 1;
+            }
+        })
+        .expect("retained block fill failed");
+    // A stale orphan link makes `add_orphan` fail inside the first
+    // transaction. No earlier check reads it.
+    filesystem
+        .modify_inode(journal, inode_number, |inode| inode.i_dtime = 1)
+        .expect("stale orphan link injection failed");
+    let original_size = filesystem
+        .get_inode_by_num(journal, inode_number)
+        .expect("inode read failed")
+        .size();
+    let mut original = vec![0u8; BLOCK_SIZE];
+    read_inode_data_into(journal, filesystem, inode_number, 0, &mut original)
+        .expect("retained block read failed");
+
+    let error = truncate_inode(journal, filesystem, inode_number, 100)
+        .expect_err("a failed first restart transaction must fail the truncate");
+    assert_eq!(error.kind(), Ext4ErrorKind::Corrupted);
+    assert_eq!(
+        error.context(),
+        Some(rsext4::error::ErrorContext::Operation {
+            op: "orphan:add_stale_dtime"
+        }),
+        "the shrink must take the restart path and fail in its first transaction"
+    );
+
+    let inode = filesystem
+        .get_inode_by_num(journal, inode_number)
+        .expect("failed truncate must leave the inode readable");
+    assert_eq!(inode.size(), original_size);
+    assert_eq!(filesystem.superblock.s_last_orphan, 0);
+    let mut data = vec![0u8; BLOCK_SIZE];
+    read_inode_data_into(journal, filesystem, inode_number, 0, &mut data)
+        .expect("retained block read failed");
+    let first_changed = data.iter().zip(&original).position(|(now, was)| now != was);
+    assert_eq!(
+        first_changed, None,
+        "a failed truncate must leave every byte of the file as it was"
+    );
+}
+
+#[test]
+fn failed_first_restart_commit_keeps_the_extent_tail() {
+    assert_extent_first_restart_commit(FirstRestartCommit::Fails);
+}
+
+#[test]
+fn failed_first_restart_commit_keeps_the_legacy_tail() {
+    assert_legacy_first_restart_commit(FirstRestartCommit::Fails);
+}
+
+#[test]
+fn power_cut_before_first_restart_commit_keeps_the_extent_tail() {
+    assert_extent_first_restart_commit(FirstRestartCommit::PowerCutBefore);
+}
+
+#[test]
+fn power_cut_before_first_restart_commit_keeps_the_legacy_tail() {
+    assert_legacy_first_restart_commit(FirstRestartCommit::PowerCutBefore);
+}
+
+#[test]
+fn power_cut_after_first_restart_commit_zeroes_the_extent_tail() {
+    assert_extent_first_restart_commit(FirstRestartCommit::PowerCutAfter);
+}
+
+#[test]
+fn power_cut_after_first_restart_commit_zeroes_the_legacy_tail() {
+    assert_legacy_first_restart_commit(FirstRestartCommit::PowerCutAfter);
+}
+
+/// What happens to the first commit of a restarted shrink, the one that
+/// carries its new size and orphan record.
+#[derive(Clone, Copy, Debug)]
+enum FirstRestartCommit {
+    /// Writing the commit block fails and returns an error.
+    Fails,
+    /// Power is cut just before the commit block is written.
+    PowerCutBefore,
+    /// Power is cut just after the commit block is written.
+    PowerCutAfter,
+}
+
+fn assert_extent_first_restart_commit(fault: FirstRestartCommit) {
+    let mut fixture = build_large_extent_fixture("/restart-commit-extent");
+    install_small_journal(&mut fixture);
+    let retained_block = fixture.data_blocks[0];
+    assert_first_restart_commit(
+        fault,
+        &fixture.power_cut,
+        fixture.journal,
+        fixture.filesystem,
+        fixture.inode_number,
+        retained_block,
+    );
+}
+
+fn assert_legacy_first_restart_commit(fault: FirstRestartCommit) {
+    let fixture = build_restarting_legacy_tail_fixture("/restart-commit-legacy");
+    let retained_block = fixture.removed_blocks[0];
+    assert_first_restart_commit(
+        fault,
+        &fixture.power_cut,
+        fixture.journal,
+        fixture.filesystem,
+        fixture.inode_number,
+        retained_block,
+    );
+}
+
+/// Shrinks a file to 100 bytes on the restart path, applies `fault` to the
+/// shrink's first commit, remounts, and checks the EOF block.
+///
+/// When that commit never became durable, the file must keep its old size
+/// and every byte of its EOF block. When it did, recovery must finish the
+/// shrink: the file has 100 bytes, those bytes are unchanged, and the rest of
+/// the EOF block is zero.
+fn assert_first_restart_commit(
+    fault: FirstRestartCommit,
+    power_cut: &PowerCutProbe,
+    mut journal: Jbd2Dev<RestartDevice>,
+    mut filesystem: Ext4FileSystem,
+    inode_number: InodeNumber,
+    retained_block: AbsoluteBN,
+) {
+    const NEW_SIZE: usize = 100;
+    filesystem
+        .datablock_cache
+        .modify(&mut journal, retained_block, |block| {
+            for (index, byte) in block.iter_mut().enumerate() {
+                *byte = (index % 251) as u8 + 1;
+            }
+        })
+        .expect("retained block fill failed");
+    filesystem
+        .sync_filesystem(&mut journal)
+        .expect("fixture sync failed");
+    journal.flush().expect("fixture checkpoint failed");
+    let original_size = filesystem
+        .get_inode_by_num(&mut journal, inode_number)
+        .expect("inode read failed")
+        .size();
+    let mut original = vec![0u8; BLOCK_SIZE];
+    read_inode_data_into(
+        &mut journal,
+        &mut filesystem,
+        inode_number,
+        0,
+        &mut original,
+    )
+    .expect("retained block read failed");
+
+    match fault {
+        FirstRestartCommit::Fails => {
+            power_cut.arm_failed_commit(1);
+            let error =
+                truncate_inode(&mut journal, &mut filesystem, inode_number, NEW_SIZE as u64)
+                    .expect_err("a failed first commit must fail the truncate");
+            assert_eq!(
+                error.kind(),
+                Ext4ErrorKind::Io,
+                "unexpected error {error:?}"
+            );
+            assert_eq!(
+                power_cut.commit_writes.get(),
+                1,
+                "the failed commit must be the first commit of the restarted shrink"
+            );
+        }
+        FirstRestartCommit::PowerCutBefore | FirstRestartCommit::PowerCutAfter => {
+            if matches!(fault, FirstRestartCommit::PowerCutBefore) {
+                power_cut.arm_power_cut_before_commit(1);
+            } else {
+                power_cut.arm_committed_transaction_power_cut(1);
+            }
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                truncate_inode(&mut journal, &mut filesystem, inode_number, NEW_SIZE as u64)
+            }));
+            assert!(outcome.is_err(), "the fixture must cut power");
+            let durable = if matches!(fault, FirstRestartCommit::PowerCutBefore) {
+                0
+            } else {
+                1
+            };
+            assert_eq!(power_cut.commits_before_cut.get(), Some(durable));
+        }
+    }
+
+    drop(filesystem);
+    let device = journal.into_inner();
+    device.power_cut.disable();
+    if matches!(fault, FirstRestartCommit::PowerCutAfter) {
+        // The cut comes before the tail is zeroed, so recovery has to do it.
+        let start = retained_block.to_u32().expect("block number") as usize * BLOCK_SIZE;
+        assert_eq!(
+            device.bytes[start..start + BLOCK_SIZE],
+            original[..],
+            "the tail must still be intact on the device at the cut"
+        );
+    }
+    let mut remount_device = Jbd2Dev::initial_jbd2dev(0, device, false);
+    let mut remounted =
+        Ext4FileSystem::mount(&mut remount_device).expect("mount after the fault failed");
+    let inode = remounted
+        .get_inode_by_num(&mut remount_device, inode_number)
+        .expect("inode read after remount failed");
+    let mut data = vec![0u8; BLOCK_SIZE];
+    remount_device
+        .read_blocks(&mut data, retained_block, 1)
+        .expect("retained block read after remount failed");
+    if matches!(fault, FirstRestartCommit::PowerCutAfter) {
+        assert_eq!(
+            inode.size(),
+            NEW_SIZE as u64,
+            "recovery must keep the new size"
+        );
+        assert_eq!(
+            remounted.superblock.s_last_orphan, 0,
+            "recovery must finish the shrink"
+        );
+        assert_eq!(
+            data[..NEW_SIZE],
+            original[..NEW_SIZE],
+            "the retained bytes must survive"
+        );
+        assert_eq!(
+            data[NEW_SIZE..].iter().position(|byte| *byte != 0),
+            None,
+            "recovery must zero the EOF block past the new size"
+        );
+    } else {
+        assert_eq!(inode.size(), original_size, "the shrink never committed");
+        let first_changed = data.iter().zip(&original).position(|(now, was)| now != was);
+        assert_eq!(
+            first_changed, None,
+            "a shrink whose first commit is not durable must leave every byte of the file as it \
+             was"
+        );
+    }
+}
+
+#[test]
+fn failed_commit_after_small_extent_truncate_keeps_the_tail() {
+    assert_small_truncate_commit(SmallFileMapping::Extent, CommitAfterTruncate::Fails);
+}
+
+#[test]
+fn failed_commit_after_small_legacy_truncate_keeps_the_tail() {
+    assert_small_truncate_commit(SmallFileMapping::Legacy, CommitAfterTruncate::Fails);
+}
+
+#[test]
+fn power_cut_before_commit_after_small_extent_truncate_keeps_the_tail() {
+    assert_small_truncate_commit(
+        SmallFileMapping::Extent,
+        CommitAfterTruncate::PowerCutBefore,
+    );
+}
+
+#[test]
+fn power_cut_before_commit_after_small_legacy_truncate_keeps_the_tail() {
+    assert_small_truncate_commit(
+        SmallFileMapping::Legacy,
+        CommitAfterTruncate::PowerCutBefore,
+    );
+}
+
+/// How the two blocks of a small test file are mapped.
+#[derive(Clone, Copy, Debug)]
+enum SmallFileMapping {
+    Extent,
+    Legacy,
+}
+
+/// What happens to the first commit after a shrink of a small file returned.
+#[derive(Clone, Copy, Debug)]
+enum CommitAfterTruncate {
+    /// Writing the commit block fails and returns an error.
+    Fails,
+    /// Power is cut just before the commit block is written.
+    PowerCutBefore,
+}
+
+/// Builds a two-block file whose shrink fits in one transaction, and returns
+/// its journal, filesystem, power-cut probe, inode and first data block.
+fn build_small_file_fixture(
+    mapping: SmallFileMapping,
+) -> (
+    Jbd2Dev<RestartDevice>,
+    Ext4FileSystem,
+    Rc<PowerCutProbe>,
+    InodeNumber,
+    AbsoluteBN,
+) {
+    const PATH: &str = "/small-truncate";
+    let device = RestartDevice::new(16 * 1024);
+    let power_cut = Rc::clone(&device.power_cut);
+    let mut journal = Jbd2Dev::initial_jbd2dev(0, device, true);
+    mkfs(&mut journal).expect("mkfs failed");
+    let mut filesystem = Ext4FileSystem::mount(&mut journal).expect("mount failed");
+    let initial_data = match mapping {
+        SmallFileMapping::Extent => Some(vec![0u8; 2 * BLOCK_SIZE]),
+        SmallFileMapping::Legacy => None,
+    };
+    mkfile(
+        &mut journal,
+        &mut filesystem,
+        PATH,
+        initial_data.as_deref(),
+        None,
+    )
+    .expect("file creation failed");
+    let inode_number = dir::get_inode_with_num(&mut filesystem, &mut journal, PATH)
+        .expect("lookup failed")
+        .expect("created inode missing")
+        .0;
+    if let SmallFileMapping::Legacy = mapping {
+        let blocks = [
+            filesystem
+                .alloc_block(&mut journal)
+                .expect("first data allocation failed"),
+            filesystem
+                .alloc_block(&mut journal)
+                .expect("second data allocation failed"),
+        ];
+        filesystem
+            .modify_inode(&mut journal, inode_number, |inode| {
+                inode.i_flags &= !Ext4Inode::EXT4_EXTENTS_FL;
+                inode.i_block = [0; 15];
+                for (slot, block) in blocks.iter().enumerate() {
+                    inode.i_block[slot] = block.to_u32().expect("direct block number");
+                }
+                inode.i_size_lo = (2 * BLOCK_SIZE) as u32;
+                inode.i_size_high = 0;
+                inode.i_blocks_lo = 2 * (BLOCK_SIZE / 512) as u32;
+            })
+            .expect("legacy inode publication failed");
+    }
+    let mut inode = filesystem
+        .get_inode_by_num(&mut journal, inode_number)
+        .expect("inode read failed");
+    assert_eq!(
+        inode.uses_extents(),
+        matches!(mapping, SmallFileMapping::Extent)
+    );
+    assert_eq!(inode.size(), 2 * BLOCK_SIZE as u64);
+    let first_block = rsext4::loopfile::resolve_inode_block(
+        &filesystem,
+        &mut journal,
+        inode_number,
+        &mut inode,
+        0,
+    )
+    .expect("first block lookup failed")
+    .expect("first block must be mapped");
+    filesystem
+        .datablock_cache
+        .modify(&mut journal, first_block, |block| {
+            for (index, byte) in block.iter_mut().enumerate() {
+                *byte = (index % 251) as u8 + 1;
+            }
+        })
+        .expect("first block fill failed");
+    filesystem
+        .sync_filesystem(&mut journal)
+        .expect("fixture sync failed");
+    journal.flush().expect("fixture checkpoint failed");
+    (journal, filesystem, power_cut, inode_number, first_block)
+}
+
+/// Shrinks a small file to 100 bytes, applies `fault` to the first commit
+/// after the shrink returned, remounts, and checks the EOF block.
+///
+/// Whichever size recovery keeps, the bytes inside it must be the original
+/// ones and the rest of the EOF block must be zero: the old size with its
+/// old tail, or 100 bytes followed by zeros.
+fn assert_small_truncate_commit(mapping: SmallFileMapping, fault: CommitAfterTruncate) {
+    const NEW_SIZE: usize = 100;
+    let (mut journal, mut filesystem, power_cut, inode_number, first_block) =
+        build_small_file_fixture(mapping);
+    let original_size = 2 * BLOCK_SIZE as u64;
+    let mut original = vec![0u8; BLOCK_SIZE];
+    read_inode_data_into(
+        &mut journal,
+        &mut filesystem,
+        inode_number,
+        0,
+        &mut original,
+    )
+    .expect("first block read failed");
+
+    truncate_inode(&mut journal, &mut filesystem, inode_number, NEW_SIZE as u64)
+        .expect("the shrink itself must succeed");
+    match fault {
+        CommitAfterTruncate::Fails => {
+            power_cut.arm_failed_commit(1);
+            let error = filesystem
+                .sync_filesystem(&mut journal)
+                .expect_err("the failed commit must fail the sync");
+            assert_eq!(
+                error.kind(),
+                Ext4ErrorKind::Io,
+                "unexpected error {error:?}"
+            );
+        }
+        CommitAfterTruncate::PowerCutBefore => {
+            power_cut.arm_power_cut_before_commit(1);
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                filesystem.sync_filesystem(&mut journal)
+            }));
+            assert!(outcome.is_err(), "the fixture must cut power");
+        }
+    }
+    assert_eq!(
+        power_cut.commit_writes.get(),
+        1,
+        "the fault must hit the first commit after the shrink returned"
+    );
+
+    drop(filesystem);
+    let device = journal.into_inner();
+    device.power_cut.disable();
+    let mut remount_device = Jbd2Dev::initial_jbd2dev(0, device, false);
+    let mut remounted =
+        Ext4FileSystem::mount(&mut remount_device).expect("mount after the fault failed");
+    let size = remounted
+        .get_inode_by_num(&mut remount_device, inode_number)
+        .expect("inode read after remount failed")
+        .size();
+    assert!(
+        size == original_size || size == NEW_SIZE as u64,
+        "recovery must keep the old or the new size, not {size}"
+    );
+    assert_eq!(
+        remounted.superblock.s_last_orphan, 0,
+        "recovery must leave no orphan"
+    );
+    let mut data = vec![0u8; BLOCK_SIZE];
+    remount_device
+        .read_blocks(&mut data, first_block, 1)
+        .expect("first block read after remount failed");
+    let visible = core::cmp::min(size, BLOCK_SIZE as u64) as usize;
+    let first_changed = data[..visible]
+        .iter()
+        .zip(&original[..visible])
+        .position(|(now, was)| now != was);
+    assert_eq!(
+        first_changed, None,
+        "after a {fault:?} fault, a {size}-byte file must keep every byte inside its size"
+    );
+    assert_eq!(
+        data[visible..].iter().position(|byte| *byte != 0),
+        None,
+        "the EOF block past the size must be zero"
+    );
+}
+
 fn assert_large_extent_removal_restarts(path: &str, operation: ExtentRemovalOperation) {
     let mut fixture = build_large_extent_fixture(path);
     install_small_journal(&mut fixture);
@@ -649,6 +1368,12 @@ fn assert_large_extent_removal_restarts(path: &str, operation: ExtentRemovalOper
 }
 
 fn build_large_extent_fixture(path: &str) -> LargeExtentFixture {
+    build_large_extent_fixture_from(path, 0)
+}
+
+/// Builds the four-leaf extent fixture with its first extent at logical block
+/// `first_logical`.
+fn build_large_extent_fixture_from(path: &str, first_logical: u32) -> LargeExtentFixture {
     let device = RestartDevice::new(16 * 1024);
     let power_cut = Rc::clone(&device.power_cut);
     let mut journal = Jbd2Dev::initial_jbd2dev(0, device, true);
@@ -681,7 +1406,7 @@ fn build_large_extent_fixture(path: &str) -> LargeExtentFixture {
         ExtentTree::with_filesystem(&mut inode, &filesystem, inode_number)
             .insert_extent(
                 &mut filesystem,
-                Ext4Extent::new(logical_blocks, physical.raw(), 1),
+                Ext4Extent::new(first_logical + logical_blocks, physical.raw(), 1),
                 &mut journal,
             )
             .expect("extent insertion failed");
@@ -712,7 +1437,9 @@ fn build_large_extent_fixture(path: &str) -> LargeExtentFixture {
             "fixture did not build four external leaves"
         );
     }
-    inode.i_size_lo = logical_blocks * BLOCK_SIZE as u32;
+    let size = (u64::from(first_logical) + u64::from(logical_blocks)) * BLOCK_SIZE as u64;
+    inode.i_size_lo = size as u32;
+    inode.i_size_high = (size >> 32) as u32;
     filesystem
         .modify_inode(&mut journal, inode_number, |on_disk| *on_disk = inode)
         .expect("inode publication failed");
