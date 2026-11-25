@@ -3,7 +3,7 @@
 # a change to it fails until the entry changes too. Code the fork writes meets the limit in full.
 # <path> <lines> <reason>
 src/blockdev/journal.rs 5333 upstream code, unchanged
-src/file/io.rs 3149 upstream code, plus 119 lines of fix 2b, which upstream pull request 2829 adds to the same file
+src/file/io.rs 3066 upstream code, plus 36 lines of fixes 2b and 2c, which upstream pull requests 2829 and 2845 add to the same file
 src/file/xattr.rs 2059 upstream code, unchanged
 src/jbd2/jbd2.rs 2474 upstream code, unchanged
 src/test_contracts.rs 2831 upstream code, unchanged
