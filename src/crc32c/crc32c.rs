@@ -289,6 +289,10 @@ mod tests {
 
     #[cfg(target_arch = "aarch64")]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri does not run the inline assembly of the CRC32 instructions"
+    )]
     fn aarch64_hardware_crc_matches_software_for_unaligned_slices() {
         if !std::arch::is_aarch64_feature_detected!("crc") {
             return;
@@ -330,6 +334,10 @@ mod tests {
     // runs, as no user-space pin can prevent them.
     #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "Miri does not run inline assembly or sched_getcpu, which this test needs"
+    )]
     fn x86_64_hardware_crc_matches_software_for_unaligned_slices() {
         // A dedicated thread, so the harness thread keeps its affinity.
         std::thread::spawn(x86_64_hardware_crc_on_one_cpu)
