@@ -287,7 +287,13 @@ mod tests {
         assert!(!hardware_crc32c_enabled());
     }
 
-    #[cfg(target_arch = "aarch64")]
+    // The safety argument below holds where std's `crc` detection describes
+    // every CPU, which this test can show only for Linux, Android and macOS,
+    // so other aarch64 hosts do not build it.
+    #[cfg(all(
+        target_arch = "aarch64",
+        any(target_os = "linux", target_os = "android", target_os = "macos")
+    ))]
     #[test]
     #[cfg_attr(
         miri,
@@ -309,10 +315,10 @@ mod tests {
                     assert_eq!(
                         unsafe {
                             // SAFETY: the test returned early above unless std
-                            // reported `crc`. On Linux that is `HWCAP_CRC32`,
-                            // which holds for every CPU; on macOS every CPU is
-                            // ARMv8.1 or later, where the extension is
-                            // mandatory.
+                            // reported `crc`. On Linux and Android that is
+                            // `HWCAP_CRC32`, which holds for every CPU; on macOS
+                            // every CPU is ARMv8.1 or later, where the extension
+                            // is mandatory.
                             crate::crc32c::arm64::crc32c_hardware(seed, data)
                         },
                         crc32c_update(seed, data),
@@ -347,6 +353,10 @@ mod tests {
 
     #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
     fn x86_64_hardware_crc_on_one_cpu() {
+        // SAFETY: these match the C declarations in glibc's and musl's
+        // `<sched.h>`: `int sched_getcpu(void)` and `int sched_setaffinity(pid_t,
+        // size_t, const cpu_set_t *)`, where `int` and `pid_t` are 32-bit signed
+        // integers and `size_t` is `usize` on x86_64 Linux.
         unsafe extern "C" {
             fn sched_getcpu() -> i32;
             fn sched_setaffinity(pid: i32, cpusetsize: usize, mask: *const CpuSet) -> i32;
