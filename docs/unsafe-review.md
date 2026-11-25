@@ -5,6 +5,16 @@ fixes of the same pull request applied. Line numbers are those of the tree that 
 It is the input to a maintainer's own review by hand, not a replacement for one: the section
 "What this review could not verify" lists what was reasoned about but not run or proved.
 
+## Terms
+
+A cyclic redundancy check (CRC) is a checksum, and CRC32C (cyclic redundancy check, Castagnoli) is
+the 32-bit one ext4 uses for metadata. On x86_64, the `sse4.2` feature adds the `crc32`
+instruction, which software detects with the `cpuid` instruction through leaf 1, bit 20 of
+register `ecx`. The REX (register extension) prefix encodes 64-bit operands and registers past the
+first eight. On aarch64, version 8.0 of the Arm architecture makes the CRC32 instructions optional
+and version 8.1 makes them mandatory, and EL0 (exception level 0) runs user programs while EL1
+(exception level 1) runs the kernel.
+
 ## Where unsafe code lives
 
 Every `unsafe` keyword in `src/`, `tests/`, `fuzz/` and `examples/` is in the CRC32C code
@@ -33,8 +43,8 @@ the crate has no pointer cast left that could produce a reference to a descripto
 
 | # | location | what it relies on | verdict |
 |---|---|---|---|
-| 1 | `src/crc32c/x86_64.rs:15` `unsafe fn crc32c_hardware` | `# Safety`: every CPU that may execute the call implements SSE4.2. The function reads `data` only through safe slice operations, so the CPU feature is its whole precondition. | argument wrong, fixed: it named only the CPU making the call, which a thread can leave while the call runs |
-| 2 | `src/crc32c/x86_64.rs:20` `asm!` `crc32 r64, r64` | The caller's SSE4.2 guarantee. Both operands are registers, so `nomem` and `nostack` hold, and CRC32 changes no flags (Intel SDM, CRC32, "Flags Affected: None"), so `preserves_flags` holds. | holds |
+| 1 | `src/crc32c/x86_64.rs:15` `unsafe fn crc32c_hardware` | `# Safety`: every CPU that may execute the call implements `sse4.2`. The function reads `data` only through safe slice operations, so the CPU feature is its whole precondition. | argument wrong, fixed: it named only the CPU making the call, which a thread can leave while the call runs |
+| 2 | `src/crc32c/x86_64.rs:20` `asm!` `crc32 r64, r64` | The caller's `sse4.2` guarantee. Both operands are registers, so `nomem` and `nostack` hold, and CRC32 changes no flags (the Intel manual for CRC32 lists "Flags Affected: None"), so `preserves_flags` holds. | holds |
 | 3 | `src/crc32c/x86_64.rs:34` `asm!` `crc32 r32, r8` | As row 2. `reg_byte` on x86_64 never picks `ah` to `dh`, which cannot be encoded with the REX prefix the instruction may need. | holds |
 | 4 | `src/crc32c/arm64.rs:54` `asm!` `mrs ID_AA64ISAR0_EL1` in the safe `has_hardware_crc32` | The read touches no memory. At EL1 it is architectural; at EL0 it traps, and Linux emulates the ID registers for user space (`HWCAP_CPUID`). | holds; a host that does not emulate the read (macOS) delivers an illegal instruction, which ends the process but is not undefined behavior; the function is public, but only the deprecated `is_hardware_crc32_supported` calls it, and the checksum path does not |
 | 5 | `src/crc32c/arm64.rs:84` `unsafe fn crc32c_hardware`, `#[target_feature(enable = "crc")]` | `# Safety`: it runs only on CPUs with the CRC instructions. | holds |
@@ -45,11 +55,11 @@ the crate has no pointer cast left that could produce a reference to a descripto
 | 10 | `src/crc32c/arm64.rs:145` last byte, `*p` | `len > 0`, so `p` points at the last byte of `data`. | holds |
 | 11 | `src/crc32c/crc32c.rs:126` `unsafe fn enable_hardware_crc32c` | `# Safety`: every CPU that may run the crate's code from the call on implements the instructions. The function only stores a flag. `Relaxed` is enough: a CPU that has not yet seen the store keeps the table-driven path, which needs nothing. | holds |
 | 12 | `src/crc32c/crc32c.rs:143` call of `crc32c_hardware` in `crc32c_append` | The flag is set only by row 11, whose caller guarantees the instructions on every CPU, which is the contract of rows 1 and 5. | holds |
-| 13 | `src/crc32c/crc32c.rs:316` aarch64 test, call of `crc32c_hardware` | The test returns early unless `is_aarch64_feature_detected!("crc")`. On Linux and Android std reads `HWCAP_CRC32` from `AT_HWCAP`, which the kernel sets from the value it sanitises across all CPUs and refuses to bring up a later CPU without; on macOS every CPU is ARMv8.1 or later. | argument missing, fixed: the test was built on every aarch64 host but argued only Linux and macOS; it is now built only on Linux, Android and macOS |
+| 13 | `src/crc32c/crc32c.rs:316` aarch64 test, call of `crc32c_hardware` | The test returns early unless `is_aarch64_feature_detected!("crc")`. On Linux and Android std reads `HWCAP_CRC32` from `AT_HWCAP`, which the kernel sets from the value it sanitizes across all CPUs and refuses to bring up a later CPU without; on macOS every CPU is version 8.1 of the Arm architecture or later. | argument missing, fixed: the test was built on every aarch64 host but argued only Linux and macOS; it is now built only on Linux, Android and macOS |
 | 14 | `src/crc32c/crc32c.rs:360` `unsafe extern "C"` block | The declarations must match the C prototypes: `int sched_getcpu(void)` and `int sched_setaffinity(pid_t, size_t, const cpu_set_t *)`, with `int` and `pid_t` 32-bit signed and `size_t` equal to `usize` on x86_64 Linux. They do, and the 16-word `CpuSet` is the 1024-bit `cpu_set_t` of glibc and musl. | argument missing, fixed: the block had no comment |
 | 15 | `src/crc32c/crc32c.rs:378` `sched_getcpu()` | No arguments; it only reads state. A negative return fails `usize::try_from`, and the test skips. | holds |
 | 16 | `src/crc32c/crc32c.rs:392` `sched_setaffinity(0, size_of::<CpuSet>(), &mask)` | `mask` is a live `CpuSet` of the size passed, which the kernel only reads; pid 0 is the calling thread. A bit past the set is refused before the call. | holds |
-| 17 | `src/crc32c/crc32c.rs:412` x86_64 test, call of `crc32c_hardware` | The thread is pinned to one CPU, and CPUID leaf 1 ECX bit 20 read after pinning reported SSE4.2. If the thread had moved between `sched_getcpu` and `sched_setaffinity`, Linux migrates it to the one allowed CPU before the call returns. The comment states the remaining assumption: no CPU hot-unplug, cpuset change or outside affinity change during the test. Breaking it would raise an illegal instruction, not corrupt memory. | holds, under the stated assumption |
+| 17 | `src/crc32c/crc32c.rs:412` x86_64 test, call of `crc32c_hardware` | The thread is pinned to one CPU, and `cpuid` leaf 1, `ecx` bit 20 read after pinning reported `sse4.2`. If the thread had moved between `sched_getcpu` and `sched_setaffinity`, Linux migrates it to the one allowed CPU before the call returns. The comment states the remaining assumption: no CPU hot-unplug, cpuset change or outside affinity change during the test. Breaking it would raise an illegal instruction, not corrupt memory. | holds, under the stated assumption |
 | 18 | `tests/hardware_crc32c_switch.rs:15` call of `enable_hardware_crc32c` | The binary holds this one test, and nothing in it computes a checksum after the call, so no CPU runs the instructions the call allows. | holds; it stops holding if a test that computes a checksum is added to this binary, as the file's header says |
 
 Of 18 uses, 15 hold as written, one argument was wrong and two were missing; this pull request
@@ -76,7 +86,7 @@ fixes all three.
   x86_64, and no aarch64 emulator was at hand. Its tests run only on an aarch64 host.
 - The reviewing host lacks the aarch64 test target with std, so only an x86_64 build checked the
   syntax of the `#[cfg]` change in row 13.
-- Rows 13 and 17 rely on Linux behavior (the kernel sanitises `HWCAP_CRC32` across CPUs and
+- Rows 13 and 17 rely on Linux behavior (the kernel sanitizes `HWCAP_CRC32` across CPUs and
   refuses a late CPU without it; `sched_setaffinity` migrates the thread before it returns) that
   this review takes from the kernel's documented behavior and did not test.
 - Miri runs weekly on x86_64 and ignores the hardware tests, since it does not run inline assembly.
