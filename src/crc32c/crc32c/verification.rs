@@ -2,8 +2,8 @@
 //! tables equal the bitwise definition. Behind `#[cfg(kani)]`, so only `cargo kani` compiles them.
 //!
 //! The harnesses call `crc32c_update`, the software path, directly. `crc32c_append` takes the
-//! hardware path when the CPU reports it, and that path is one instruction, not code a prover
-//! reads. The polynomial below follows Request for Comments (RFC) 3720 appendix B.4 rather than
+//! hardware path once the environment calls `enable_hardware_crc32c`, and that path is one
+//! instruction, not code a prover reads. The polynomial below follows Request for Comments (RFC) 3720 appendix B.4 rather than
 //! the module, so a wrong constant cannot prove itself right.
 
 use super::*;

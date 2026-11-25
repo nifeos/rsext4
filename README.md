@@ -45,6 +45,16 @@ filesystem.read_inode(file.number, 0, &mut buffer)?;
 filesystem.unmount()?;
 ```
 
+Checksums use the table-driven Castagnoli cyclic redundancy check (CRC32C) code by default, which
+runs on any CPU. An environment that can guarantee the CRC32C instructions on every CPU that may
+run the crate turns on the hardware path once, before mounting; the documentation of
+`enable_hardware_crc32c` names the instructions and where the guarantee can come from.
+
+```rust
+// SAFETY: every CPU this program may run on implements the CRC32C instructions.
+unsafe { rsext4::crc32c::enable_hardware_crc32c() };
+```
+
 ## What is proven
 
 Eight Kani harnesses prove the on-disk parsers, each for every input up to the bound it states:
@@ -54,8 +64,8 @@ Eight Kani harnesses prove the on-disk parsers, each for every input up to the b
 - the group descriptor decode accepts exactly the record sizes ext4 defines;
 - an extent tree node holds no more entries than fit after its header;
 - a directory block walk ends, and every entry it yields lies inside its record and its block;
-- the one-byte step of the software Castagnoli cyclic redundancy check (CRC32C), and every entry
-  of its slicing tables, equal the bitwise definition.
+- the one-byte step of the software CRC32C, and every entry of its slicing tables, equal the
+  bitwise definition.
 
 Each harness sits in a `verification` module beside the code it proves, behind `#[cfg(kani)]`,
 and each has a patch in [falsifications/](falsifications/) that breaks the property and must turn
