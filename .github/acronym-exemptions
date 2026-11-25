@@ -38,11 +38,11 @@ src/cache/bitmap.rs LRU upstream code, unchanged
 src/checksum/dirblock.rs HTree upstream code, unchanged
 src/checksum/journal.rs CRC32 upstream code, unchanged
 src/crc32c/arm64.rs ARMv8 upstream code, unchanged
+src/crc32c/crc32c.rs SSE4 fix 5a, which upstream pull request 2831 moves from src/crc32c/x86_64.rs to this file
+src/crc32c/crc32c.rs CPUID fix 5a, which upstream pull request 2831 moves from src/crc32c/x86_64.rs to this file
+src/crc32c/crc32c.rs ECX fix 5a, which upstream pull request 2831 moves from src/crc32c/x86_64.rs to this file
 src/crc32c/x86_64.rs SIMD upstream code, unchanged
-src/crc32c/x86_64.rs CPUID upstream code, unchanged
 src/crc32c/x86_64.rs FPU upstream code, unchanged
-src/crc32c/x86_64.rs SSE4 upstream code, unchanged
-src/crc32c/x86_64.rs ECX upstream code, unchanged
 src/disknode/inode.rs UID upstream code, unchanged
 src/disknode/inode.rs GID upstream code, unchanged
 src/disknode/inode.rs FIFO upstream code, unchanged

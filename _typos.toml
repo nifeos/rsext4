@@ -20,8 +20,9 @@ extend-ignore-identifiers-re = [
     "^BlcokGroupLayout$",
 ]
 # Upstream code, unchanged: a comment in src/ext4/alloc.rs, kept as written so the fork's fixes
-# apply upstream.
-extend-ignore-re = ["lazy initialisation\\)"]
+# apply upstream. Fix 5a: a doc comment in src/crc32c/crc32c.rs, as upstream pull request 2831
+# merged it.
+extend-ignore-re = ["lazy initialisation\\)", "value it\\n/// +sanitises across all CPUs"]
 
 [default.extend-words]
 # mke2fs, the e2fsprogs program that formats an ext4 image, which the tests and the fuzz seeds run.
