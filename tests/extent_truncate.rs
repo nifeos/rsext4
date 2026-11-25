@@ -7,6 +7,9 @@
 //! read of the retained block, before any byte is zeroed, and checks that nothing is put back. The
 //! last test shrinks a depth-2 tree past a whole index node and checks that the node is freed.
 
+// Miri runs only the tests that reach unsafe code, and this file reaches none.
+#![cfg(not(miri))]
+
 use std::{cell::Cell, rc::Rc};
 
 use rsext4::{error::Ext4Result, *};

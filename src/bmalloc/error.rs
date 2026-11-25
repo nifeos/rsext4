@@ -10,7 +10,7 @@ pub(crate) fn map_bitmap_error(err: BitmapError) -> Ext4Error {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use super::*;
 

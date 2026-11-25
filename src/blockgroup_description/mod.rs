@@ -9,7 +9,7 @@ pub use desc::Ext4GroupDesc;
 pub use stats::BlockGroupStats;
 pub use table::{BlockGroupDescIter, BlockGroupDescTable, BlockGroupDescTableMut};
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests;
 #[cfg(kani)]
 mod verification;

@@ -1,5 +1,8 @@
 //! Deterministic directory cache-coherence regressions.
 
+// Miri runs only the tests that reach unsafe code, and this file reaches none.
+#![cfg(not(miri))]
+
 use std::cell::Cell;
 
 use rsext4::{

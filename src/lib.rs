@@ -13,7 +13,10 @@ extern crate alloc;
 
 #[cfg(test)]
 extern crate std;
-#[cfg(test)]
+// Under Miri only the tests of `crc32c`, the one module that holds unsafe code, are built. Every
+// other test module is `not(miri)`: it reaches no unsafe code of this crate, and its filesystem
+// images take minutes per test under Miri, so the whole suite would run for many hours.
+#[cfg(all(test, not(miri)))]
 mod test_contracts;
 
 // Re-export shared configuration constants for external callers.

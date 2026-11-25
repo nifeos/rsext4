@@ -1,5 +1,8 @@
 //! Transaction restart and crash recovery for large extent removals.
 
+// Miri runs only the tests that reach unsafe code, and this file reaches none.
+#![cfg(not(miri))]
+
 use std::{
     cell::Cell,
     panic::{AssertUnwindSafe, catch_unwind},

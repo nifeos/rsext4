@@ -5,7 +5,7 @@ mod default;
 mod disk;
 mod features;
 mod geometry;
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests;
 mod types;
 #[cfg(kani)]

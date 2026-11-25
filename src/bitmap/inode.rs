@@ -121,7 +121,7 @@ impl<'a> InodeBitmap<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use alloc::vec;
 

@@ -342,7 +342,7 @@ impl MmpBlock {
         self.sequence() == MMP_SEQUENCE_FSCK
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, not(miri)))]
     fn has_reserved_sequence(&self) -> bool {
         self.sequence() > MMP_SEQUENCE_MAX
     }
@@ -389,7 +389,7 @@ fn validate_mmp_location(superblock: &Ext4Superblock) -> Ext4Result<AbsoluteBN> 
     Ok(AbsoluteBN::new(block))
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use alloc::{rc::Rc, vec::Vec};
     use core::cell::{Cell, RefCell};

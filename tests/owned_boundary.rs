@@ -2,6 +2,9 @@
 //! directory cursors and readers, permission validation, remount policy, and
 //! read-only behavior.
 
+// Miri runs only the tests that reach unsafe code, and this file reaches none.
+#![cfg(not(miri))]
+
 use std::{cell::Cell, collections::BTreeMap};
 
 use rsext4::{

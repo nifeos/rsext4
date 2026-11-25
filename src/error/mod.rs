@@ -233,7 +233,7 @@ impl From<Ext4ErrorKind> for Ext4Error {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use super::*;
     use crate::alloc::string::ToString;

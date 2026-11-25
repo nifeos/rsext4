@@ -3,6 +3,9 @@
 //! The suite covers linear directory growth, record reuse, creation edge
 //! cases and rollback when an inode update fails partway through a create.
 
+// Miri runs only the tests that reach unsafe code, and this file reaches none.
+#![cfg(not(miri))]
+
 use std::{cell::Cell, rc::Rc};
 
 use rsext4::{
