@@ -40,6 +40,7 @@ to carry, and its own `fuzz.yml` builds the targets.
 | 12 | `src/crc32c/arm64.rs` | the safe `has_hardware_crc32` ran `mrs` on an ID register, which ends the process at EL0 where the kernel does not emulate the read, and nothing called it but the deprecated `is_hardware_crc32_supported`; both are removed (breaking) | not yet filed |
 | 13 | `Cargo.toml` (`[lints.rust]`, `[lints.clippy]`), `src/lib.rs` | the crate root denies `unsafe_code` and allows it only in the `crc32c` module, and `unsafe_op_in_unsafe_fn`, `clippy::missing_safety_doc` and `clippy::undocumented_unsafe_blocks` are set to `deny` explicitly | not yet filed |
 | 14 | `src/crc32c/crc32c.rs` | the x86_64 hardware test declares `sched_getcpu` as `safe fn` in its `unsafe extern` block, so its call needs no `unsafe` | not yet filed |
+| 15 | `tests/linux_image_repro.rs` | the `uninit_bg` fixture asks `mke2fs` for lazily initialized inode tables and expects groups marked `ITABLE_ZEROED`, which `mke2fs` sets only where it can discard the image, so on macOS the fixture check failed before rsext4 ran; the fixture now passes `assume_storage_prezeroed=1`, which marks the tables zeroed on every host (the image is a fresh `truncate`, so they are) | not yet filed |
 
 ## Fixes taken from upstream after 0.9.2
 
