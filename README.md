@@ -25,6 +25,7 @@ Format a device, mount it, and write and read one file.
 `BlockIo` over a byte vector) and `BenchClock` (a fixed clock).
 
 ```rust
+use core::cell::Cell;
 use rsext4::{
     Ext4, FileName, FilePermissions, MkfsOptions, MountOptions, MountServices, MutationContext,
     NoopObserver, format,
@@ -69,7 +70,7 @@ Eight Kani harnesses prove the on-disk parsers, each for every input up to the b
 
 Each harness sits in a `verification` module beside the code it proves, behind `#[cfg(kani)]`,
 and each has a patch in [falsifications/](falsifications/) that breaks the property and must turn
-the harness red. Run them with `cargo kani`. The bounds are small (24 bytes for the directory and
+the harness red. "Running the proofs" below says how to run them. The bounds are small (24 bytes for the directory and
 extent tree walks, 128 for the group descriptor), so a defect that needs a longer input is not
 ruled out.
 
@@ -85,8 +86,59 @@ cargo build --lib --target x86_64-unknown-none
 ```
 
 Some tests format images with `mke2fs` and check them with `e2fsck`, so they need e2fsprogs 1.47
-or newer on the path. The fuzz targets are in `fuzz/`, and [fuzz/README.md](fuzz/README.md)
+or newer on the path. Most Linux distributions ship it as the `e2fsprogs` package; on macOS,
+`brew install e2fsprogs` installs it outside the default path. The fuzz targets are in `fuzz/`, and [fuzz/README.md](fuzz/README.md)
 says how to build their seed corpus and run them.
+
+### Running the proofs
+
+Install Kani first: run `cargo install --locked kani-verifier --version 0.68.0`, then
+`cargo kani setup`. Setup downloads a model checker and the Rust toolchain that Kani pins, so it
+needs network access, and `cargo install` compiles Kani from source. Then run every harness:
+
+```sh
+cargo kani
+```
+
+The eight harnesses take about three and a half minutes on a shared 80-core x86_64 host. Three of
+them take almost all of it: `superblock_decode_reads_only_its_record` (about 80 seconds),
+`extent_node_parse_is_total` (about 56) and `directory_block_walk_ends_inside_its_block` (about
+40). The other five take a few seconds each. To run one harness, give its full path, because
+`--exact` refuses a bare name:
+
+```sh
+cargo kani --harness entries::verification::directory_entry_parse_is_total --exact
+```
+
+The full path of each harness is its patch's file name in `falsifications/` without `.patch`, with
+each `.` read as `::`.
+
+A passing run prints lines that look alarming and mean nothing. They are the `use of an unstable
+feature` warning, the `Found the following unsupported constructs` warning, checks marked
+`unreachable`, and many `aborting path on assume(false)` lines, which are paths Kani discards on
+purpose. The answer is the last line,
+`Complete - 8 successfully verified harnesses, 0 failures, 8 total.`, and `cargo kani` exits 0.
+
+### Running one falsification patch
+
+Each file in `falsifications/` applies a small defect that turns its harness red. Apply one,
+confirm the proof fails, then undo it with the same patch reversed:
+
+```sh
+patch -p1 --no-backup-if-mismatch < falsifications/entries.verification.directory_entry_parse_is_total.patch
+cargo kani --harness entries::verification::directory_entry_parse_is_total --exact
+patch -R -p1 --no-backup-if-mismatch < falsifications/entries.verification.directory_entry_parse_is_total.patch
+```
+
+The failing run prints a placeholder for the failed slice index.
+
+```text
+Failed Checks: This is a placeholder message; Kani doesn't support message formatted at runtime
+```
+
+Kani prints that line for a message built at runtime. Then it prints `VERIFICATION:- FAILED` and
+ends with `Complete - 0 successfully verified harnesses, 1 failures, 1 total.`, and `cargo kani`
+exits 1. Each patch's opening lines name the check it expects to fail.
 
 ## BUGS
 
@@ -96,8 +148,15 @@ says how to build their seed corpus and run them.
 
 ## Minimum Rust version
 
-Rust 1.94. To check it, run `rustup toolchain install 1.94 --profile minimal`, then
-`cargo +1.94 test --all-features`, and the bare-metal builds above with `+1.94`.
+Rust 1.94. To check it, run:
+
+```sh
+rustup toolchain install 1.94 --profile minimal
+rustup target add --toolchain 1.94 aarch64-unknown-none-softfloat riscv64imac-unknown-none-elf x86_64-unknown-none
+cargo +1.94 test --all-features
+```
+
+then the bare-metal builds above with `+1.94`.
 
 ## License
 
