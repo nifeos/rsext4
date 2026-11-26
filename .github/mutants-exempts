@@ -26,5 +26,14 @@ src/disknode/inode_flags.rs:56 # each inode flag is a distinct bit, so `^` compo
 src/disknode/inode_flags.rs:57 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
 src/disknode/inode_flags.rs:58 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
 src/checksum/dirblock.rs:126 # `count > limit` already puts the counted entries past the dx tail, so turning `||` into `&&` only defers the refusal to the `data_len > tail_offset` check below; turning `block_size - tail_len` into `+` defers a tail past the block to the `tail_offset + tail_len` check, which refuses the same blocks
+src/blockdev/cached_device.rs:422 # a sector size of zero is refused either way, and one that is not a power of two has an odd factor, so no power-of-two block size is a multiple of it and the last check refuses it
 src/checksum/dirblock.rs:117 # turning `>` into `>=` refuses a count and limit that end the block one check early: the dx tail then starts before the count, so the next check refuses the same block
 src/checksum/dirblock.rs:131 # the limit check above already refuses every tail that ends past the block, so this check refuses nothing more and its mutants change no outcome
+src/ext4/mkfs.rs:710 # mkfs rewrites the group 0 descriptor from build_uninit_group_desc after the other groups are initialized and nothing reads it in between, so a field left out here never reaches the image
+src/ext4/mkfs.rs:711 # mkfs rewrites the group 0 descriptor from build_uninit_group_desc after the other groups are initialized and nothing reads it in between, so a field left out here never reaches the image
+src/ext4/mkfs.rs:712 # mkfs rewrites the group 0 descriptor from build_uninit_group_desc after the other groups are initialized and nothing reads it in between, so a field left out here never reaches the image
+src/ext4/mkfs.rs:713 # mkfs rewrites the group 0 descriptor from build_uninit_group_desc after the other groups are initialized and nothing reads it in between, so a field left out here never reaches the image
+src/ext4/mkfs.rs:714 # mkfs rewrites the group 0 descriptor from build_uninit_group_desc after the other groups are initialized and nothing reads it in between, so a field left out here never reaches the image
+src/ext4/mkfs.rs:715 # mkfs rewrites the group 0 descriptor from build_uninit_group_desc after the other groups are initialized and nothing reads it in between, so a field left out here never reaches the image
+src/ext4/mkfs.rs:716 # mkfs rewrites the group 0 descriptor from build_uninit_group_desc after the other groups are initialized and nothing reads it in between, so a field left out here never reaches the image
+src/extents_tree/root.rs:168 # the high leaf bits are shifted past the 32 low ones, so `^` joins the two halves as `|` does

@@ -673,4 +673,59 @@ mod directory_functional_tests {
 
         umount(fs, &mut jbd2_dev).expect("umount failed");
     }
+
+    #[test]
+    fn mkdir_carries_the_used_directory_count_into_the_high_half() {
+        let device = MockBlockDevice::new(64 * 1024 * 1024);
+        let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, device, true);
+        mkfs(&mut jbd2_dev).expect("mkfs failed");
+        let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("mount failed");
+        assert_eq!(fs.group_count, 1);
+        let group = rsext4::bmalloc::BGIndex::new(0);
+        let descriptor = fs.get_group_desc_mut(group).unwrap();
+        descriptor.bg_used_dirs_count_lo = 0xffff;
+        descriptor.bg_used_dirs_count_hi = 0;
+
+        mkdir(&mut jbd2_dev, &mut fs, "/carried").unwrap();
+
+        let descriptor = fs.get_group_desc(group).unwrap();
+        assert_eq!(descriptor.bg_used_dirs_count_lo, 0);
+        assert_eq!(descriptor.bg_used_dirs_count_hi, 1);
+    }
+
+    #[test]
+    fn read_file_follows_eight_symlinks_and_refuses_a_ninth() {
+        let device = MockBlockDevice::new(64 * 1024 * 1024);
+        let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, device, true);
+
+        mkfs(&mut jbd2_dev).expect("mkfs failed");
+        let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("mount failed");
+        mkfile(
+            &mut jbd2_dev,
+            &mut fs,
+            "/link0",
+            Some(b"end of the chain"),
+            None,
+        )
+        .expect("target creation failed");
+        for hop in 1..=9 {
+            let target = format!("/link{}", hop - 1);
+            let link = format!("/link{hop}");
+            create_symbol_link(&mut jbd2_dev, &mut fs, &target, &link)
+                .expect("symlink creation failed");
+        }
+
+        assert_eq!(
+            read_file(&mut jbd2_dev, &mut fs, "/link8").expect("eight hops resolve"),
+            b"end of the chain"
+        );
+        assert_eq!(
+            read_file(&mut jbd2_dev, &mut fs, "/link9")
+                .expect_err("a ninth hop is refused")
+                .kind(),
+            Ext4ErrorKind::InvalidInput
+        );
+
+        umount(fs, &mut jbd2_dev).expect("umount failed");
+    }
 }

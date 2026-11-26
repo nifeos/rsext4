@@ -3142,3 +3142,7 @@ pub fn write_inode_data<B: BlockIo>(
 
     Ok(())
 }
+
+#[cfg(test)]
+#[cfg(not(miri))]
+mod tests;

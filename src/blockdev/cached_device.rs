@@ -927,4 +927,75 @@ mod tests {
         let inner = dev.into_inner();
         assert_eq!(inner.flushes, 1);
     }
+
+    #[test]
+    fn a_direct_run_write_refreshes_the_held_image_from_its_own_block() {
+        let block_size = crate::config::BLOCK_SIZE;
+        let mut dev = BlockDev::new(StrictSectorDevice {
+            data: vec![0; 16 * block_size],
+            physical_block_size: SECTOR_SIZE as u32,
+            reads: 0,
+        });
+        dev.read_block(AbsoluteBN::new(3))
+            .expect("hold the second block of the run");
+
+        let mut run = vec![0x11; 2 * block_size];
+        run[block_size..].fill(0x22);
+        dev.write_blocks(&run, AbsoluteBN::new(2), 2)
+            .expect("write a two-block run");
+
+        assert!(dev.buffer().iter().all(|&byte| byte == 0x22));
+    }
+
+    #[test]
+    fn direct_writes_check_the_block_range_and_unpublished_edits() {
+        let mut dev = BlockDev::new(StrictSectorDevice {
+            data: vec![0; 16 * crate::config::BLOCK_SIZE],
+            physical_block_size: SECTOR_SIZE as u32,
+            reads: 0,
+        });
+        dev.read_block(AbsoluteBN::new(2)).expect("hold a block");
+        dev.buffer_mut()[0] = 0x5a;
+
+        let error = dev
+            .write_blocks(
+                &vec![0; crate::config::BLOCK_SIZE],
+                AbsoluteBN::new(u64::MAX),
+                1,
+            )
+            .expect_err("an unpublished edit must block the write");
+        assert_eq!(error.kind(), crate::Ext4ErrorKind::Busy);
+
+        let error = dev
+            .write_blocks(&[], AbsoluteBN::new(u64::MAX), 0)
+            .expect_err("an empty write also waits for the edit");
+        assert_eq!(error.kind(), crate::Ext4ErrorKind::Busy);
+
+        let error = dev
+            .write_blocks(
+                &vec![0; 2 * crate::config::BLOCK_SIZE],
+                AbsoluteBN::new(u64::MAX),
+                2,
+            )
+            .expect_err("a run past the last block number overflows");
+        assert_eq!(error.kind(), crate::Ext4ErrorKind::Overflow);
+    }
+
+    #[test]
+    fn filesystem_geometry_rejects_power_of_two_blocks_outside_the_supported_sizes() {
+        let mut dev = BlockDev::new(StrictSectorDevice {
+            data: vec![0; 16 * crate::config::BLOCK_SIZE],
+            physical_block_size: SECTOR_SIZE as u32,
+            reads: 0,
+        });
+
+        for block_size in [512, 2 * crate::config::MAX_BLOCK_SIZE as usize] {
+            assert_eq!(
+                dev.set_filesystem_block_size(block_size)
+                    .expect_err("only the supported block sizes are valid")
+                    .kind(),
+                crate::Ext4ErrorKind::BadSuperblock
+            );
+        }
+    }
 }

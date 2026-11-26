@@ -866,6 +866,20 @@ mod tests {
     }
 
     #[test]
+    fn superblock_carries_block_counts_past_32_bits() {
+        let total_blocks = (1 << 32) + 3;
+        let mut layout = compute_fs_layout(DEFAULT_INODE_SIZE, total_blocks, BLOCK_SIZE_U32)
+            .expect("a 64-bit block count should have a representable layout");
+        // Group 0 cannot hold the descriptor table of a filesystem large enough to reserve more
+        // than 2^32 blocks, so the layout is given such a reserve directly.
+        layout.reserved_blocks = (5 << 32) + 7;
+        let superblock = build_superblock(total_blocks, &layout);
+
+        assert_eq!(superblock.blocks_count(), total_blocks);
+        assert_eq!(superblock.reserved_blocks_count(), (5 << 32) + 7);
+    }
+
+    #[test]
     fn superblock_free_blocks_match_group_descriptors() {
         let blocks_per_group = 8 * BLOCK_SIZE_U32;
         let total_blocks = u64::from(blocks_per_group) + 128;

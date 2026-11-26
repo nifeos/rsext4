@@ -155,3 +155,57 @@ impl Ext4FileSystem {
         }
     }
 }
+
+#[cfg(test)]
+#[cfg(not(miri))]
+mod tests {
+    use super::*;
+
+    fn fs_with_inode_range(first_inode: u32, inode_count: u32) -> Ext4FileSystem {
+        let superblock = Ext4Superblock {
+            s_inodes_count: inode_count,
+            s_first_ino: first_inode,
+            s_inode_size: Ext4Inode::LARGE_INODE_SIZE,
+            ..Default::default()
+        };
+        Ext4FileSystem {
+            superblock,
+            superblock_dirty: false,
+            group_descs: Vec::new(),
+            dirty_group_descs: Vec::new(),
+            block_allocator: BlockAllocator::new(&superblock),
+            inode_allocator: InodeAllocator::new(&superblock),
+            bitmap_cache: BitmapCache::create_default(),
+            inodetable_cache: InodeCache::default(superblock.s_inode_size),
+            datablock_cache: DataBlockCache::new(DATABLOCK_CACHE_MAX, BLOCK_SIZE),
+            root_inode: InodeNumber::new(2).unwrap(),
+            group_count: 1,
+            mounted: true,
+            mmp: Default::default(),
+            journal_sb_block_start: None,
+            system_zones: SystemZoneMap::default(),
+            pending_shrinks: BTreeSet::new(),
+        }
+    }
+
+    #[test]
+    fn orphan_numbers_outside_the_ordinary_inode_range_are_corrupt() {
+        let fs = fs_with_inode_range(11, 64);
+
+        assert_eq!(fs.checked_orphan_number(0).unwrap(), None);
+        assert_eq!(
+            fs.checked_orphan_number(11).unwrap(),
+            Some(InodeNumber::new(11).unwrap())
+        );
+        assert_eq!(
+            fs.checked_orphan_number(64).unwrap(),
+            Some(InodeNumber::new(64).unwrap())
+        );
+        for raw in [10, 65] {
+            assert_eq!(
+                fs.checked_orphan_number(raw).unwrap_err().kind(),
+                Ext4ErrorKind::Corrupted
+            );
+        }
+    }
+}

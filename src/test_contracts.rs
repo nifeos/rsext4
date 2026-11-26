@@ -2136,7 +2136,7 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     assert!(stats.total_inodes >= stats.free_inodes);
     assert!(
         fs.get_group_desc(rsext4::bmalloc::BGIndex::new(0))
-            .is_some()
+            .is_some_and(|desc| desc.is_inode_table_zeroed())
     );
     assert!(
         fs.get_group_desc(rsext4::bmalloc::BGIndex::new(u32::MAX))
