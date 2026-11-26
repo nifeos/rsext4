@@ -8,7 +8,7 @@ src/dir/mkdir.rs create_directory_at_inner 236 upstream code, unchanged
 src/ext4/alloc.rs Ext4FileSystem::alloc_blocks 102 upstream code, unchanged
 src/ext4/alloc.rs Ext4FileSystem::alloc_inodes 113 upstream code, plus 2 lines of fix 9, which upstream pull request 2825 adds to the same function
 src/ext4/mkfs.rs compute_fs_layout 112 upstream code, unchanged
-src/ext4/mount.rs Ext4FileSystem::mount_inner 267 upstream code, unchanged
+src/ext4/mount.rs Ext4FileSystem::mount_inner 268 upstream code, plus 1 line of fix 2b, which upstream pull request 2829 adds to the same function
 src/ext4/owned.rs Ext4::read_directory_with_reader 122 upstream code, unchanged
 src/extents_tree/convert.rs ExtentTree::split_extent_recursive 132 upstream code, unchanged
 src/extents_tree/insert.rs ExtentTree::insert_recursive 150 upstream code, unchanged

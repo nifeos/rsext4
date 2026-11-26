@@ -1056,8 +1056,12 @@ fn finalize_restarted_inode_update<B: BlockIo>(
 /// after it, orphan recovery finishes the shrink and zeroes the tail. Without
 /// the commit, these updates would stay in the running transaction, and a
 /// failed or interrupted commit of that transaction would bring back the old
-/// size over a zeroed tail. A shrink to a block boundary that fits in one
-/// transaction zeroes nothing and needs neither. Orphan recovery and the
+/// size over a zeroed tail. A restarted shrink stays in `pending_shrinks`
+/// until it finishes: a failed zeroing is not undone, orphan recovery
+/// finishes the shrink after a crash, and on a mounted filesystem a later
+/// truncate, growing write or preallocation finishes it first, even after
+/// the inode loses its last name. A shrink to a block boundary that fits in
+/// one transaction zeroes nothing and needs neither. Orphan recovery and the
 /// final reap shrink an inode whose size is already on disk.
 fn publish_truncate_before_zeroing<B: BlockIo>(
     device: &mut Jbd2Dev<B>,
@@ -1074,6 +1078,11 @@ fn publish_truncate_before_zeroing<B: BlockIo>(
     }
     let original_inode = *inode;
     let updated = fs.with_metadata_transaction(device, 2, |fs, device| {
+        // A failure in this transaction restores the set with the rest of
+        // the in-memory state, so the shrink is pending only once published.
+        if restarts {
+            fs.pending_shrinks.insert(inode_num);
+        }
         let mut updated = original_inode;
         updated.i_size_lo = truncate_size as u32;
         updated.i_size_high = (truncate_size >> 32) as u32;
@@ -1099,6 +1108,13 @@ fn finish_orphaned_truncate<B: BlockIo>(
     fs: &mut Ext4FileSystem,
     inode_num: InodeNumber,
 ) -> Ext4Result<()> {
+    // An unlinked inode still needs the on-disk orphan chain until its final
+    // open reference is reaped, even when this resize freed every data block.
+    // Its shrink is done, though, so a later write need not finish it again.
+    if fs.get_inode_by_num(device, inode_num)?.i_links_count == 0 {
+        fs.pending_shrinks.remove(&inode_num);
+        return Ok(());
+    }
     // Removing a non-head orphan can dirty the predecessor inode-table block,
     // the target inode-table block, and the superblock.
     fs.with_metadata_transaction(device, 3, |fs, device| {
@@ -1564,6 +1580,14 @@ pub fn truncate<B: BlockIo>(
     truncate_inode(device, fs, inode_num, truncate_size)
 }
 
+/// Zeroes the retained EOF block's tail for good.
+///
+/// The callers zero bytes that the file has already lost or never shows: a
+/// shrink whose new size is already on disk, or an extension that publishes
+/// its larger size only after this succeeds. Nothing puts the bytes back.
+/// A failed write-through can still leave the old bytes on the device; a
+/// shrink then stays pending, and `finish_pending_truncate` zeroes them again
+/// before any later write or preallocation can grow the file over them.
 fn zero_mapped_inode_tail<B: BlockIo>(
     device: &mut Jbd2Dev<B>,
     fs: &mut Ext4FileSystem,
@@ -1637,6 +1661,9 @@ pub fn truncate_inode<B: BlockIo>(
     inode_num: InodeNumber,
     truncate_size: u64,
 ) -> Ext4Result<()> {
+    // Size equality alone is not completion: finish an earlier shrink before
+    // interpreting another resize.
+    finish_pending_truncate(device, fs, inode_num)?;
     truncate_inode_mapping(
         device,
         fs,
@@ -1644,6 +1671,31 @@ pub fn truncate_inode<B: BlockIo>(
         truncate_size,
         TruncatePurpose::UserResize,
     )
+}
+
+/// Finishes a shrink whose new size and orphan record are already on disk
+/// but whose zeroing or block removal has not completed.
+///
+/// A restarted shrink can stop there: it may yield for journal space, or
+/// zeroing its EOF tail or a later removal step may fail. The file then has
+/// its new size but may still map blocks past it, and its EOF block may
+/// still hold old bytes past it if the zeroing never reached the device.
+/// The inode stays in `pending_shrinks` until the shrink finishes, whether
+/// it is still linked or only held open. Orphan recovery finishes it at the
+/// next mount. On a mounted filesystem, truncate, writes that grow the file
+/// and preallocation call this first, so those bytes are zero or unmapped
+/// before they can become part of the file.
+pub(crate) fn finish_pending_truncate<B: BlockIo>(
+    device: &mut Jbd2Dev<B>,
+    fs: &mut Ext4FileSystem,
+    inode_num: InodeNumber,
+) -> Ext4Result<()> {
+    if !fs.pending_shrinks.contains(&inode_num) {
+        return Ok(());
+    }
+    let size = fs.get_inode_by_num(device, inode_num)?.size();
+    truncate_inode_mapping(device, fs, inode_num, size, TruncatePurpose::OrphanRecovery)?;
+    finish_orphaned_truncate(device, fs, inode_num)
 }
 
 pub(crate) fn recover_linked_truncate_inode<B: BlockIo>(
@@ -2200,13 +2252,18 @@ pub fn preallocate_inode<B: BlockIo>(
         return Err(Ext4Error::file_too_large());
     }
 
-    let mut inode = fs.get_inode_by_num(device, inode_num)?;
+    let inode = fs.get_inode_by_num(device, inode_num)?;
     if !inode.is_file() {
         return Err(Ext4Error::invalid_input().with_operation("fallocate:not_regular"));
     }
     if !inode.uses_extents() {
         return Err(Ext4Error::unsupported().with_operation("fallocate:legacy_indirect"));
     }
+    // Allocation skips blocks that are already mapped and may grow the size
+    // over them, so an unfinished shrink must unmap the blocks it left past
+    // the current size first.
+    finish_pending_truncate(device, fs, inode_num)?;
+    let mut inode = fs.get_inode_by_num(device, inode_num)?;
     let huge_file_feature = fs
         .superblock
         .has_feature_ro_compat(Ext4Superblock::EXT4_FEATURE_RO_COMPAT_HUGE_FILE);
@@ -2974,15 +3031,21 @@ pub fn write_inode_data<B: BlockIo>(
         return Ok(());
     }
 
-    let mut inode = fs.get_inode_by_num(device, inode_num)?;
-
-    let old_size = inode.size();
-    let block_bytes = fs.block_size() as u64;
-
     let data_len = u64::try_from(data.len()).map_err(|_| Ext4Error::overflow())?;
     let end = offset
         .checked_add(data_len)
         .ok_or_else(Ext4Error::file_too_large)?;
+
+    let mut inode = fs.get_inode_by_num(device, inode_num)?;
+    if end > inode.size() {
+        // Growing the file exposes the bytes between the old size and this
+        // write, so an unfinished shrink must zero or unmap them first.
+        finish_pending_truncate(device, fs, inode_num)?;
+        inode = fs.get_inode_by_num(device, inode_num)?;
+    }
+
+    let old_size = inode.size();
+    let block_bytes = fs.block_size() as u64;
 
     let start_lbn = offset / block_bytes;
     let end_lbn = (end - 1) / block_bytes;
