@@ -41,6 +41,7 @@ to carry, and its own `fuzz.yml` builds the targets.
 | 13 | `Cargo.toml` (`[lints.rust]`, `[lints.clippy]`), `src/lib.rs` | the crate root denies `unsafe_code` and allows it only in the `crc32c` module, and `unsafe_op_in_unsafe_fn`, `clippy::missing_safety_doc` and `clippy::undocumented_unsafe_blocks` are set to `deny` explicitly | not yet filed |
 | 14 | `src/crc32c/crc32c.rs` | the x86_64 hardware test declares `sched_getcpu` as `safe fn` in its `unsafe extern` block, so its call needs no `unsafe` | not yet filed |
 | 15 | `src/superblock/geometry.rs` | `Ext4Superblock::block_size` shifted 1024 by the on-disk `s_log_block_size` with no bound, so a value of 64 or more panicked in a debug build and 54 to 63 answered 0, and `descs_per_block` and `inode_table_blocks` call it on a superblock nothing has validated yet; it now answers 0 for any value from 54 up, both helpers read a block size that does not fit in 32 bits as 0, and `inode_table_blocks` takes its product in 64 bits | not yet filed |
+| 16 | `src/file/io.rs`, `src/file/create.rs` | reading a symlink that is not stored in the inode reserved a buffer as large as the inode's recorded size, with no bound, so a corrupt size could ask for any amount of memory; a recorded size of one block or more is now refused as corruption before anything is reserved, and creating a symlink whose target and terminating zero do not fit in one block is refused, as Linux refuses it | not yet filed |
 
 ## Fixes taken from upstream after 0.9.2
 
