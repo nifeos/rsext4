@@ -84,69 +84,20 @@ pub fn has_hardware_crc32() -> bool {
 pub unsafe fn crc32c_hardware(mut crc: u32, data: &[u8]) -> u32 {
     // This helper only performs the raw CRC update step. Callers remain
     // responsible for any ext4-specific init/finalize inversion.
-    let mut p = data.as_ptr();
-    let mut len = data.len();
-
-    // Every read below is in bounds because `len` counts the bytes left
-    // between `p` and the end of `data`, and each step reads at most `len`
-    // bytes before advancing `p` and lowering `len` by the same amount.
-
-    // 1. Consume the unaligned prefix so the hot loop can use 64-bit loads.
-    while len > 0 && !(p as usize).is_multiple_of(8) {
-        unsafe {
-            // SAFETY: `len > 0`, so `p` points at a byte of `data`, and
-            // advancing it by one keeps it within `data` or one past its end.
-            crc = __crc32cb(crc, *p);
-            p = p.add(1);
-        }
-        len -= 1;
+    let (chunks, mut tail) = data.as_chunks::<8>();
+    for chunk in chunks {
+        crc = __crc32cd(crc, u64::from_le_bytes(*chunk));
     }
-
-    // 2. Main loop: process aligned 64-bit chunks.
-    while len >= 8 {
-        unsafe {
-            // SAFETY: the prefix loop left `p` 8-byte aligned and this loop
-            // advances it in steps of 8, so the read is aligned; `len >= 8`
-            // keeps all eight bytes in `data`, and `p` ends within `data` or
-            // one past its end.
-            let val = *(p as *const u64);
-            crc = __crc32cd(crc, val);
-            p = p.add(8);
-        }
-        len -= 8;
+    if let Some((word, rest)) = tail.split_first_chunk::<4>() {
+        crc = __crc32cw(crc, u32::from_le_bytes(*word));
+        tail = rest;
     }
-
-    // 3. Finish the tail with progressively smaller chunk sizes.
-    if len >= 4 {
-        unsafe {
-            // SAFETY: `p` is 8-byte aligned here, so also 4-byte aligned;
-            // `len >= 4` keeps the four bytes in `data`, and `p` ends within
-            // `data` or one past its end.
-            let val = *(p as *const u32);
-            crc = __crc32cw(crc, val);
-            p = p.add(4);
-        }
-        len -= 4;
+    if let Some((half, rest)) = tail.split_first_chunk::<2>() {
+        crc = __crc32ch(crc, u16::from_le_bytes(*half));
+        tail = rest;
     }
-
-    if len >= 2 {
-        unsafe {
-            // SAFETY: `p` advanced by 0 or 4 from an 8-byte boundary, so it
-            // is 2-byte aligned; `len >= 2` keeps the two bytes in `data`, and
-            // `p` ends within `data` or one past its end.
-            let val = *(p as *const u16);
-            crc = __crc32ch(crc, val);
-            p = p.add(2);
-        }
-        len -= 2;
+    if let Some(&byte) = tail.first() {
+        crc = __crc32cb(crc, byte);
     }
-
-    if len > 0 {
-        unsafe {
-            // SAFETY: `len > 0`, so `p` points at the last byte of `data`.
-            crc = __crc32cb(crc, *p);
-        }
-    }
-
     crc
 }
