@@ -28,6 +28,8 @@ use rsext4::{
 
 // Integration test roots resolve modules beside themselves, not under a
 // directory of their own name.
+#[path = "extent_restart/growing_write.rs"]
+mod growing_write;
 #[cfg(not(feature = "USE_MULTILEVEL_CACHE"))]
 #[path = "extent_restart/pending_shrink.rs"]
 mod pending_shrink;
