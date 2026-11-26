@@ -9,4 +9,4 @@ src/jbd2/jbd2.rs 2476 upstream code, unchanged but for the Miri gate
 src/test_contracts.rs 2831 upstream code, unchanged
 tests/extent_restart.rs 2166 upstream code, plus the tests of fixes 2b, 2c and 2d, which upstream pull requests 2829, 2845 and 2885 add to the same file
 tests/file_operations.rs 2624 upstream code, unchanged but for the Miri gate
-tests/linux_image_repro.rs 3691 upstream code, unchanged but for the Miri gate
+tests/linux_image_repro.rs 3696 upstream code, unchanged but for the Miri gate and the uninit_bg fixture marking its inode tables zeroed (assume_storage_prezeroed), so it builds the same image on every host
