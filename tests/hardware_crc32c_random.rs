@@ -7,7 +7,7 @@
 //! The inputs are random slices of a random buffer, at every alignment and at lengths of every
 //! remainder modulo eight, with random starting accumulators. The seed is printed, and setting
 //! `RSEXT4_CRC32C_SEED` repeats a run. Setting `RSEXT4_REQUIRE_HARDWARE_CRC32C` makes a host
-//! without the CRC32 extension fail instead of skip, which is how CI shows the path ran.
+//! whose CPU lacks the `crc` feature fail instead of skip, which is how CI shows the path ran.
 //!
 //! The safety argument holds where std's `crc` detection describes every CPU, which this test can
 //! show only for Linux, Android and macOS, so other hosts do not build it.

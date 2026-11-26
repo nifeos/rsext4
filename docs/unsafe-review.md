@@ -51,7 +51,7 @@ cannot reach, a contract only the caller can establish, or a foreign function.
 | # | location | what it relies on | why it stays |
 |---|---|---|---|
 | 1 | `src/crc32c/x86_64.rs:15` `unsafe fn crc32c_hardware` | `# Safety`: every CPU that may execute the call implements `sse4.2`. The function reads `data` only through safe slice operations, so the CPU feature is its whole precondition. | the CPU feature is a fact about the machine that only the caller can establish |
-| 2 | `src/crc32c/x86_64.rs:20` `asm!` `crc32 r64, r64` | The caller's `sse4.2` guarantee. Both operands are registers, so `nomem` and `nostack` hold, and CRC32 changes no flags (the Intel manual for CRC32 lists "Flags Affected: None"), so `preserves_flags` holds. | inline assembly is always unsafe; the module uses it so that the code needs no SIMD register state, as its header says |
+| 2 | `src/crc32c/x86_64.rs:20` `asm!` `crc32 r64, r64` | The caller's `sse4.2` guarantee. Both operands are registers, so `nomem` and `nostack` hold, and CRC32 changes no flags (the Intel manual for CRC32 lists "Flags Affected: None"), so `preserves_flags` holds. | inline assembly is always unsafe; the module uses it so that the code needs no single instruction, multiple data (SIMD) register state, as its header says |
 | 3 | `src/crc32c/x86_64.rs:34` `asm!` `crc32 r32, r8` | As row 2. `reg_byte` on x86_64 never picks `ah` to `dh`, which cannot be encoded with the REX prefix the instruction may need. | as row 2 |
 | 4 | `src/crc32c/arm64.rs:19` `unsafe fn crc32c_hardware`, `#[target_feature(enable = "crc")]` | `# Safety`: it runs only on CPUs with the CRC instructions. Its body is safe code: inside the function the CRC32C intrinsics are safe to call, and the input is read through `as_chunks`, `split_first_chunk` and `from_le_bytes`. | as row 1; a safe `#[target_feature]` function would still be unsafe to call from `crc32c_append`, and `unsafe fn` keeps the `# Safety` section next to the contract |
 | 5 | `src/crc32c/crc32c.rs:126` `unsafe fn enable_hardware_crc32c` | `# Safety`: every CPU that may run the crate's code from the call on implements the instructions. The function only stores a flag. `Relaxed` is enough: a CPU that has not yet seen the store keeps the table-driven path, which needs nothing. | it is where the environment hands that guarantee to the crate |
@@ -64,13 +64,13 @@ cannot reach, a contract only the caller can establish, or a foreign function.
 | 12 | `tests/hardware_crc32c_random.rs:107` call of `enable_hardware_crc32c` | As row 7: the test returns early unless std reports `crc`, and is built only on Linux, Android and macOS on aarch64. | the test checks the hardware path through the public switch on random inputs |
 
 Of the 12 uses, six are in the library and six in tests. Row 12 is in a test only this repository
-carries; the other eleven are in code that upstream has or is offered.
+carries; the other eleven are in code that upstream has or that this fork offers upstream.
 
 ## Lints
 
 `Cargo.toml` sets each lint that governs the unsafe code explicitly:
 
-- `unsafe_code` is denied at the crate root and allowed only on the `crc32c` module (`src/lib.rs`).
+- `src/lib.rs` denies `unsafe_code` at the crate root and allows it only on the `crc32c` module.
 - `unsafe_op_in_unsafe_fn` is `deny`, so each unsafe operation in an `unsafe fn` needs its own
   `unsafe` block. Both `unsafe fn` bodies comply; the aarch64 one has no unsafe operation.
 - `clippy::missing_safety_doc` and `clippy::undocumented_unsafe_blocks` are `deny`. They report
@@ -85,8 +85,8 @@ carries; the other eleven are in code that upstream has or is offered.
 
 - The aarch64 hardware path (rows 4, 7 and 12) runs in the `hardware CRC32C (aarch64)` job of
   `.github/workflows/ci.yml` on a hosted arm64 runner, a little-endian Linux host at EL0. Nothing
-  runs it big-endian or at EL1; for big-endian, the generated code of
-  `aarch64_be-unknown-none-softfloat` was read instead, and it byte-swaps each load.
+  runs it big-endian or at EL1; for big-endian, this review read the generated code
+  of `aarch64_be-unknown-none-softfloat` instead, and it byte-swaps each load.
 - Rows 7, 10 and 12 rely on Linux behavior (the kernel sanitizes `HWCAP_CRC32` across CPUs and
   refuses a late CPU without it; `sched_setaffinity` migrates the thread before it returns) that
   this review takes from the kernel's documented behavior and did not test.
