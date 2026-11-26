@@ -742,7 +742,8 @@ impl<B: BlockIo> Jbd2Dev<B> {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use crate::Ext4ErrorKind;
 

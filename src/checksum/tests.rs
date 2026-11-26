@@ -112,6 +112,29 @@ fn inode_checksum_is_split_and_persisted_to_disk() {
 }
 
 #[test]
+fn inode_checksum_of_a_base_size_record_keeps_only_the_low_half() {
+    // Test idea: a 128-byte inode has no room for i_checksum_hi, so the checksum
+    // is still computed and only its low 16 bits are stored.
+    let sb = metadata_csum_superblock();
+    let inode_num = InodeNumber::new(42).unwrap();
+    let mut inode = sample_inode();
+    let mut raw = [0u8; Ext4Inode::GOOD_OLD_INODE_SIZE as usize];
+
+    ext4_update_raw_inode_checksum(&sb, inode_num, &mut inode, &mut raw).unwrap();
+
+    let expected = ext4_inode_csum32(
+        &sb,
+        inode_num,
+        inode.i_generation,
+        &inode,
+        Ext4Inode::GOOD_OLD_INODE_SIZE as usize,
+    )
+    .unwrap();
+    assert_eq!(inode.l_i_checksum_lo, (expected & 0xFFFF) as u16);
+    assert_eq!(inode.i_checksum_hi, 0);
+}
+
+#[test]
 fn inode_checksum_covers_unmodeled_inline_xattr_bytes() {
     // Test idea: Linux protects the complete inode record, including the
     // inline-xattr tail that is intentionally not modeled by Ext4Inode.
@@ -238,6 +261,44 @@ fn dx_checksum_uses_counted_entries_and_tail() {
 }
 
 #[test]
+fn dx_checksum_accepts_a_root_whose_tail_ends_the_block() {
+    // Test idea: a dx root with no room for entries (limit 0, count 0) puts the
+    // dx_tail right after count/limit, and its tail ends exactly at the block end.
+    let sb = metadata_csum_superblock();
+    let ino = 704258u32;
+    let generation = 7817325u32;
+    let count_offset = 32;
+    let tail_offset = count_offset;
+    let mut block = [0u8; 40];
+
+    block[0..4].copy_from_slice(&ino.to_le_bytes());
+    block[4..6].copy_from_slice(&12u16.to_le_bytes());
+    block[29] = 8;
+    let expected = ext4_metadata_csum32(
+        ext4_crc32c_seed_from_superblock(&sb),
+        &[
+            &ino.to_le_bytes(),
+            &generation.to_le_bytes(),
+            &block[..count_offset],
+            &block[tail_offset..tail_offset + 4],
+            &[0, 0, 0, 0],
+        ],
+    );
+    block[tail_offset + 4..tail_offset + 8].copy_from_slice(&expected.to_le_bytes());
+
+    assert_eq!(
+        verify_ext4_dx_checksum(&sb, ino, generation, &block),
+        Some(true)
+    );
+    block[count_offset + 2] = 1;
+    assert_eq!(
+        verify_ext4_dx_checksum(&sb, ino, generation, &block),
+        Some(false),
+        "a count above the limit must be refused"
+    );
+}
+
+#[test]
 fn dx_checksum_decodes_64k_internal_record_length() {
     let sb = metadata_csum_superblock();
     let ino = 704258_u32;
@@ -296,4 +357,22 @@ fn journal_superblock_checksum_uses_raw_crc_accumulator() {
 
     jbd2_update_superblock_checksum(&mut jsb);
     assert_eq!(jsb.s_checksum, 1091070733);
+}
+
+#[test]
+fn dx_checksum_rejects_blocks_too_short_for_a_count_and_limit() {
+    let sb = metadata_csum_superblock();
+    // A record length of 4 names neither a dx root nor a dx node.
+    let mut short = [0u8; 6];
+    short[4..6].copy_from_slice(&4u16.to_le_bytes());
+    assert_eq!(verify_ext4_dx_checksum(&sb, 1, 1, &short), Some(false));
+
+    let mut eight = [0u8; 8];
+    eight[4..6].copy_from_slice(&4u16.to_le_bytes());
+    assert_eq!(verify_ext4_dx_checksum(&sb, 1, 1, &eight), None);
+
+    // An encoded record length of zero spans the block, so the count and limit
+    // would start at byte 8 and run past a nine-byte block.
+    let nine = [0u8; 9];
+    assert_eq!(verify_ext4_dx_checksum(&sb, 1, 1, &nine), Some(false));
 }

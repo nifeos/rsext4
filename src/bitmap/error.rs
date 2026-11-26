@@ -21,7 +21,8 @@ impl core::fmt::Display for BitmapError {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use alloc::string::ToString;
 

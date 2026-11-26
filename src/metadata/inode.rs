@@ -172,7 +172,8 @@ impl Ext4FileSystem {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::deletion_time;
 

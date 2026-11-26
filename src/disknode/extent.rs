@@ -138,7 +138,8 @@ impl Ext4Extent {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::Ext4Extent;
 

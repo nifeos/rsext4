@@ -24,7 +24,8 @@ impl<'a> ExtentTree<'a> {
     ///
     /// Production paths must use [`Self::with_filesystem`] so physical-range,
     /// system-zone, and metadata-checksum validation carry mounted context.
-    #[cfg(all(test, not(miri)))]
+    #[cfg(test)]
+    #[cfg(not(miri))]
     pub(crate) fn new(inode: &'a mut Ext4Inode, block_size: usize) -> Self {
         let generation = inode.i_generation;
         Self {
@@ -537,7 +538,8 @@ impl<'a> ExtentTree<'a> {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use alloc::vec;
 
@@ -587,5 +589,40 @@ mod tests {
         );
         assert_eq!(stored, expected);
         assert_eq!(&block[tail + 4..], &[0; 4]);
+    }
+
+    #[test]
+    fn index_entries_are_range_checked_with_their_high_leaf_bits() {
+        let superblock = Ext4Superblock {
+            s_blocks_count_lo: 1024,
+            ..Ext4Superblock::default()
+        };
+        let mut inode = Ext4Inode::default();
+        let tree =
+            ExtentTree::with_checksum(&mut inode, &superblock, InodeNumber::new(12).unwrap());
+        let index_node = |leaf_hi| ExtentNode::Index {
+            header: Ext4ExtentHeader {
+                eh_magic: Ext4ExtentHeader::EXT4_EXT_MAGIC,
+                eh_entries: 1,
+                eh_max: 4,
+                eh_depth: 1,
+                eh_generation: 0,
+            },
+            entries: vec![Ext4ExtentIdx {
+                ei_block: 0,
+                ei_leaf_lo: 5,
+                ei_leaf_hi: leaf_hi,
+                ei_unused: 0,
+            }],
+        };
+
+        tree.validate_node(&index_node(0), None, None, 1024, true)
+            .expect("a leaf inside the filesystem is valid");
+        assert_eq!(
+            tree.validate_node(&index_node(1), None, None, 1024, true)
+                .unwrap_err()
+                .kind(),
+            Ext4ErrorKind::Corrupted
+        );
     }
 }

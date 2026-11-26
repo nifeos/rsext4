@@ -90,5 +90,6 @@ fn linux_crc16(mut checksum: u16, bytes: &[u8]) -> u16 {
     checksum
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests;

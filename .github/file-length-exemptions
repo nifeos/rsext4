@@ -2,8 +2,8 @@
 # (helpers/exemptions_file.py in partsfoundry/crate-workflows). Each entry holds the measured length;
 # a change to it fails until the entry changes too. Code the fork writes meets the limit in full.
 # <path> <lines> <reason>
-src/file/xattr.rs 2059 upstream code, unchanged
-src/jbd2/jbd2.rs 2651 upstream code, unchanged but for the Miri gate
+src/file/xattr.rs 2063 upstream code, unchanged but for the Miri gate and one test module declaration
+src/jbd2/jbd2.rs 2653 upstream code, unchanged but for the Miri gate
 src/test_contracts.rs 2831 upstream code, unchanged
 tests/extent_restart.rs 2284 upstream code, plus the tests of fixes 2b, 2c and 2d, which upstream pull requests 2829, 2845 and 2885 add to the same file
 tests/file_operations.rs 2797 upstream code, plus the tests of fixes 2b and 2c, which upstream pull requests 2829 and 2845 add to the same file

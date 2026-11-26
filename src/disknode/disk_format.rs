@@ -229,7 +229,8 @@ impl DiskFormat for Ext4Inode {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
 
@@ -251,6 +252,27 @@ mod tests {
         let error = Ext4Inode::decode_checked(&unaligned_extra)
             .expect_err("extra inode bytes must be four-byte aligned");
         assert_eq!(error.kind(), crate::Ext4ErrorKind::Corrupted);
+    }
+
+    #[test]
+    fn checked_inode_codec_accepts_a_record_of_exactly_the_base_size() {
+        let mut raw = alloc::vec![0; Ext4Inode::GOOD_OLD_INODE_SIZE as usize];
+        raw[0..2].copy_from_slice(&0x81a4_u16.to_le_bytes());
+
+        let inode = Ext4Inode::decode_checked(&raw).expect("a base-size inode must decode");
+        assert_eq!(inode.i_mode, 0x81a4);
+    }
+
+    #[test]
+    fn checked_inode_codec_accepts_extra_fields_that_end_the_record() {
+        let mut raw = alloc::vec![0; Ext4Inode::GOOD_OLD_INODE_SIZE as usize + 4];
+        raw[128..130].copy_from_slice(&4u16.to_le_bytes());
+        raw[130..132].copy_from_slice(&0x1234u16.to_le_bytes());
+
+        let inode =
+            Ext4Inode::decode_checked(&raw).expect("extra fields ending the record must decode");
+        assert_eq!(inode.i_extra_isize, 4);
+        assert_eq!(inode.i_checksum_hi, 0x1234);
     }
 
     #[test]

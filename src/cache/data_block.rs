@@ -695,7 +695,8 @@ pub struct DataBlockCacheStats {
     pub total_size_bytes: usize,
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
     use crate::{config::BLOCK_SIZE, disknode::Ext4Timestamp};
@@ -882,6 +883,7 @@ mod tests {
 
         assert_eq!(cache.stats().total_entries, 2);
         assert_eq!(cache.stats().max_entries, 2);
+        assert_eq!(cache.stats().total_size_bytes, 2 * BLOCK_SIZE);
     }
 
     #[cfg(feature = "USE_MULTILEVEL_CACHE")]

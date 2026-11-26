@@ -82,7 +82,8 @@ pub(crate) const fn directory_entry_type_for_mode(mode: u16) -> Option<u8> {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
 

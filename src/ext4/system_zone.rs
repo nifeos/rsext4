@@ -368,7 +368,8 @@ fn is_power_of(mut value: u32, base: u32) -> bool {
     value == 1
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use alloc::vec;
 

@@ -524,8 +524,10 @@ impl<B: BlockIo> Clock for Jbd2Dev<B> {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod detached_tests;
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests;
