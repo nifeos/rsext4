@@ -6,6 +6,8 @@
 
 本目录有自己的 `[workspace]`，不属于仓库工作区，`cargo xtask` 不构建它；它需要夜间工具链和 `cargo-fuzz`（`cargo install cargo-fuzz`）。
 
+每个目标的主体是 `src/targets.rs` 中同名的函数，`fuzz_targets/` 下的文件只用 `fuzz_target!` 包装它。其他模糊测试工作区可以依赖本 crate（`rsext4-fuzz`）并调用 `rsext4_fuzz::targets::<目标>` 来运行相同的目标。
+
 ## 目标
 
 | 目标 | 输入 | 覆盖的路径 |

@@ -6,6 +6,8 @@ This directory holds the `cargo fuzz` targets of `rsext4`. They hand arbitrary b
 
 This directory has its own `[workspace]`, outside the repository workspace, and `cargo xtask` does not build it. It needs a nightly toolchain and `cargo-fuzz` (`cargo install cargo-fuzz`).
 
+The body of each target is a function of the same name in `src/targets.rs`, and the file under `fuzz_targets/` only wraps it in `fuzz_target!`. Another fuzz workspace can run the same targets by depending on this crate (`rsext4-fuzz`) and calling `rsext4_fuzz::targets::<target>`.
+
 ## Targets
 
 | Target | Input | Paths covered |
