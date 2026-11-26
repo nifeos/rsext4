@@ -9,4 +9,4 @@ permissions:
   contents: read
 jobs:
   mutation:
-    uses: partsfoundry/crate-workflows/.github/workflows/mutation.yml@90a7ba403c0e65a6dc3462a37a2c133d23e463fb
+    uses: partsfoundry/crate-workflows/.github/workflows/mutation.yml@5cf2aab52489c44db735cce89b0fab05d784f070
