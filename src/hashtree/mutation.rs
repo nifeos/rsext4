@@ -1144,7 +1144,8 @@ fn hash_tree_error(error: HashTreeError) -> Ext4Error {
     error.into_ext4("htree:probe")
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
 

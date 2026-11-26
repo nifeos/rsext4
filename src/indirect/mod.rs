@@ -908,7 +908,8 @@ fn is_fast_symlink(filesystem: &Ext4FileSystem, inode: &Ext4Inode) -> bool {
         && inode.blocks_count(filesystem.block_size() as u32, huge_file) == 0
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use alloc::vec;
     use core::{cell::Cell, mem::size_of};
@@ -916,7 +917,7 @@ mod tests {
     use super::{
         DIRECT_BLOCKS, DOUBLE_INDIRECT_SLOT, IndirectPath, SINGLE_INDIRECT_SLOT,
         TRIPLE_INDIRECT_SLOT, allocate_legacy_inode_block, block_to_path,
-        collect_legacy_inode_ownership, has_legacy_indirect_mapping,
+        collect_legacy_inode_ownership, has_legacy_indirect_mapping, validate_legacy_block_count,
     };
     use crate::{
         BLOCK_SIZE, BlockIo, DeviceCapabilities, DeviceGeometry, ErrorContext, Ext4Error,
@@ -1075,6 +1076,38 @@ mod tests {
         let maximum = 12u64 + pointers as u64 + double as u64 + double as u64 * pointers as u64;
         assert_eq!(
             block_to_path(BLOCK_SIZE, maximum as u32)
+                .unwrap_err()
+                .kind(),
+            Ext4ErrorKind::FileTooLarge
+        );
+    }
+
+    #[test]
+    fn block_to_path_accepts_a_block_of_one_pointer() {
+        assert_eq!(
+            block_to_path(size_of::<u32>(), 0).unwrap(),
+            IndirectPath::direct(0)
+        );
+        assert_eq!(
+            block_to_path(size_of::<u32>() - 1, 0).unwrap_err().kind(),
+            Ext4ErrorKind::BadSuperblock
+        );
+        assert_eq!(
+            block_to_path(size_of::<u32>() + 2, 0).unwrap_err().kind(),
+            Ext4ErrorKind::BadSuperblock
+        );
+    }
+
+    #[test]
+    fn legacy_block_count_admits_exactly_the_mappable_blocks() {
+        let pointers = (BLOCK_SIZE / size_of::<u32>()) as u64;
+        let double = pointers * pointers;
+        let mappable = DIRECT_BLOCKS as u64 + pointers + double + double * pointers;
+
+        assert!(validate_legacy_block_count(BLOCK_SIZE, 0).is_ok());
+        assert!(validate_legacy_block_count(BLOCK_SIZE, mappable).is_ok());
+        assert_eq!(
+            validate_legacy_block_count(BLOCK_SIZE, mappable + 1)
                 .unwrap_err()
                 .kind(),
             Ext4ErrorKind::FileTooLarge

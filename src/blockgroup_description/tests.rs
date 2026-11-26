@@ -1,6 +1,6 @@
 //! Tests for block group descriptor helpers.
 
-use super::Ext4GroupDesc;
+use super::{BlockGroupStats, Ext4GroupDesc};
 use crate::{Ext4ErrorKind, endian::DiskFormat, superblock::Ext4Superblock};
 
 #[test]
@@ -205,4 +205,24 @@ fn descriptor_table_reads_and_updates_64_byte_records_in_place() {
     assert_eq!(first.free_blocks_count(), 0x3_0004);
     assert!(first.is_inode_table_zeroed());
     assert_eq!(first.block_bitmap(), 0x0000_00ab_1234_5678);
+}
+
+#[test]
+fn group_descriptor_record_is_64_bytes() {
+    assert_eq!(Ext4GroupDesc::disk_size(), 64);
+}
+
+#[test]
+fn group_stats_report_usage_as_a_percentage() {
+    let desc = Ext4GroupDesc {
+        bg_free_blocks_count_lo: 25,
+        bg_free_inodes_count_lo: 10,
+        ..Default::default()
+    };
+    let stats = BlockGroupStats::from_desc(crate::bmalloc::BGIndex::new(0), &desc);
+
+    assert_eq!(stats.block_usage_percent(100), 75.0);
+    assert_eq!(stats.inode_usage_percent(40), 75.0);
+    assert_eq!(stats.block_usage_percent(0), 0.0);
+    assert_eq!(stats.inode_usage_percent(0), 0.0);
 }

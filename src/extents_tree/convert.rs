@@ -411,7 +411,8 @@ fn build_extent_with_state(
     extent.ok_or_else(|| Ext4Error::corrupted().with_operation(operation))
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use alloc::vec::Vec;
     use core::cell::Cell;

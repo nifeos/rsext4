@@ -254,7 +254,8 @@ impl fmt::Display for RelativeInodeIndex {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 pub(crate) fn bmalloc_type_conversions_and_validation_rules_hold_for_test() -> bool {
     // BGIndex: new/raw/as_usize
     let bg = BGIndex::new(42);
@@ -323,7 +324,8 @@ pub(crate) fn bmalloc_type_conversions_and_validation_rules_hold_for_test() -> b
     true
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
     use crate::Ext4ErrorKind;

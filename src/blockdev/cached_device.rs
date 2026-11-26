@@ -333,7 +333,8 @@ impl<B: BlockIo> BlockDev<B> {
         &self.dev
     }
 
-    #[cfg(all(test, not(miri)))]
+    #[cfg(test)]
+    #[cfg(not(miri))]
     pub fn _device_mut(&mut self) -> &mut B {
         &mut self.dev
     }
@@ -496,7 +497,8 @@ impl<B: BlockIo> FilesystemBlockIo for BlockDev<B> {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use alloc::{vec, vec::Vec};
 

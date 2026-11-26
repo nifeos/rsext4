@@ -509,7 +509,8 @@ fn mark_inode_bitmap_padding(bitmap: &mut [u8], inodes_per_group: u32) {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use core::cell::Cell;
 

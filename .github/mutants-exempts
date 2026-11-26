@@ -2,3 +2,27 @@
 #   src/lib.rs:4 # swapping the operand order is the same arithmetic
 # A line without a reason is refused, and a line naming a survivor that no longer exists is
 # refused too, so this list can only shrink by a diff that says why.
+src/blockgroup_description/desc.rs:149 # the high half is shifted past the 32 bits the low half fills, so the two never share a set bit and `^` composes them as `|` does
+src/extents_tree/remove.rs:176 # the high half is shifted past the 32 bits the low half fills, so the two never share a set bit and `^` composes them as `|` does
+src/disknode/inode_flags.rs:34 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:35 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:36 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:37 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:38 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:39 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:40 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:43 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:44 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:45 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:46 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:47 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:48 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:49 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:50 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:51 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:52 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:55 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:56 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:57 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/disknode/inode_flags.rs:58 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/checksum/dirblock.rs:126 # `count > limit` already puts the counted entries past the dx tail, so turning `||` into `&&` only defers the refusal to the `data_len > tail_offset` check below; a count above the limit is refused either way
