@@ -1,8 +1,8 @@
 //! Clean publication must follow the durable journal checkpoint tail.
 //!
 //! An unmount checkpoints every journal transaction, resets the journal
-//! start to zero and clears the RECOVER flag in the ext4 superblock. If
-//! RECOVER reaches the disk first, a power cut between the two writes leaves
+//! start to zero and clears the `RECOVER` flag in the ext4 superblock. If
+//! the cleared flag reaches the disk first, a power cut between the two writes leaves
 //! a volume that claims no recovery is needed while the journal still holds
 //! a transaction. These tests cut power after every write of an unmount in
 //! turn and check the image that is left.
@@ -17,7 +17,7 @@ use rsext4::{endian::DiskFormat, superblock::Ext4Superblock, *};
 const DEVICE_BYTES: usize = 64 * 1024 * 1024;
 const FILE_PATH: &str = "/clean-order";
 const FILE_CONTENTS: &[u8] = b"persisted";
-/// Byte offset of `s_start` in the JBD2 superblock (big-endian).
+/// Byte offset of `s_start` in the journal superblock (big-endian).
 const JOURNAL_START_OFFSET: usize = 28;
 
 struct Storage {
