@@ -31,3 +31,25 @@ jobs:
           persist-credentials: false
       - run: rustup toolchain install stable --profile minimal
       - run: cargo +stable test --no-default-features
+  # The hardware CRC32C path on aarch64. Every job of the shared workflows runs on x86_64, so
+  # without this job the aarch64 instructions never run. A hosted arm64 runner implements the
+  # CRC32 extension; the first step fails if it does not, so the tests cannot skip unnoticed.
+  hardware-crc32c-aarch64:
+    name: hardware CRC32C (aarch64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: the runner implements the CRC32 extension
+        run: grep -m1 -w crc32 /proc/cpuinfo
+      - run: rustup toolchain install stable --profile minimal
+      - name: fixed inputs at every alignment
+        run: |
+          cargo +stable test --lib aarch64_hardware_crc_matches_software -- --nocapture 2>&1 | tee lib.log
+          grep -q 'aarch64_hardware_crc_matches_software_for_unaligned_slices ... ok' lib.log
+      - name: random inputs through the public switch
+        env:
+          RSEXT4_REQUIRE_HARDWARE_CRC32C: '1'
+        run: cargo +stable test --test hardware_crc32c_random -- --nocapture

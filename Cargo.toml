@@ -22,3 +22,8 @@ USE_MULTILEVEL_CACHE = [] #启用多级缓存
 # `cfg(kani)` is set by the Kani model checker, which proves this crate's harnesses.
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
