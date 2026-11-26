@@ -937,7 +937,8 @@ fn round_up_4(value: usize) -> Ext4Result<usize> {
         .ok_or_else(Ext4Error::overflow)
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod fault_tests {
     use alloc::{rc::Rc, vec, vec::Vec};
     use core::cell::Cell;
@@ -1973,7 +1974,8 @@ mod fault_tests {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
 

@@ -636,7 +636,8 @@ pub struct DataBlockCacheStats {
     pub total_size_bytes: usize,
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
     use crate::{config::BLOCK_SIZE, disknode::Ext4Timestamp};

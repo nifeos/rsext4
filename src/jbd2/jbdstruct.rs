@@ -664,7 +664,8 @@ impl DiskFormat for CommitHeader {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use DiskFormat;
 

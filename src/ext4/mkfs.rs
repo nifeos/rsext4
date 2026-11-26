@@ -769,7 +769,8 @@ fn initialize_other_groups_bitmaps<B: BlockIo>(
     Ok(())
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
 

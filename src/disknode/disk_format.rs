@@ -229,7 +229,8 @@ impl DiskFormat for Ext4Inode {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
 

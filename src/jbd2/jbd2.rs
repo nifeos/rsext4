@@ -180,7 +180,8 @@ pub(crate) enum ReplayStatus {
 }
 
 impl ReplayStatus {
-    #[cfg(all(test, not(miri)))]
+    #[cfg(test)]
+    #[cfg(not(miri))]
     pub(crate) const fn failure(self) -> Option<ReplayFailure> {
         match self {
             Self::Complete => None,
@@ -1774,7 +1775,8 @@ pub fn create_journal_entry<B: BlockIo>(
     Ok(())
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use alloc::{vec, vec::Vec};
 

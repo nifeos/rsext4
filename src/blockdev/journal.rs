@@ -632,7 +632,8 @@ impl<B: BlockIo> Jbd2Dev<B> {
         Ok(checkpointed)
     }
 
-    #[cfg(all(test, not(miri)))]
+    #[cfg(test)]
+    #[cfg(not(miri))]
     fn checkpoint_pending_transactions(&mut self) -> Ext4Result<bool> {
         self.checkpoint_transactions(1)
     }
@@ -1610,7 +1611,8 @@ impl<B: BlockIo> Jbd2Dev<B> {
     }
 
     /// Returns the cached block buffer mutably for low-level state tests.
-    #[cfg(all(test, not(miri)))]
+    #[cfg(test)]
+    #[cfg(not(miri))]
     pub(crate) fn buffer_mut(&mut self) -> &mut [u8] {
         self.inner.buffer_mut()
     }
@@ -1819,7 +1821,8 @@ impl<B: BlockIo> Clock for Jbd2Dev<B> {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use alloc::vec;
 
