@@ -356,9 +356,11 @@ mod tests {
         // SAFETY: these match the C declarations in glibc's and musl's
         // `<sched.h>`: `int sched_getcpu(void)` and `int sched_setaffinity(pid_t,
         // size_t, const cpu_set_t *)`, where `int` and `pid_t` are 32-bit signed
-        // integers and `size_t` is `usize` on x86_64 Linux.
+        // integers and `size_t` is `usize` on x86_64 Linux. `sched_getcpu`
+        // takes no arguments and only reads state, so any call is sound and it
+        // is declared `safe`.
         unsafe extern "C" {
-            fn sched_getcpu() -> i32;
+            safe fn sched_getcpu() -> i32;
             fn sched_setaffinity(pid: i32, cpusetsize: usize, mask: *const CpuSet) -> i32;
         }
 
@@ -374,8 +376,7 @@ mod tests {
         // SSE4.2.
         const SKIPPED: &str = "RSEXT4_X86_64_HARDWARE_CRC32C_TEST_SKIPPED";
 
-        // SAFETY: `sched_getcpu` takes no arguments and only reads state.
-        let Ok(cpu) = usize::try_from(unsafe { sched_getcpu() }) else {
+        let Ok(cpu) = usize::try_from(sched_getcpu()) else {
             let error = std::io::Error::last_os_error();
             std::println!("{SKIPPED} reason=cannot-pin-cpu sched_getcpu: {error}");
             return;
