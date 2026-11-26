@@ -673,4 +673,23 @@ mod directory_functional_tests {
 
         umount(fs, &mut jbd2_dev).expect("umount failed");
     }
+
+    #[test]
+    fn mkdir_carries_the_used_directory_count_into_the_high_half() {
+        let device = MockBlockDevice::new(64 * 1024 * 1024);
+        let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, device, true);
+        mkfs(&mut jbd2_dev).expect("mkfs failed");
+        let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("mount failed");
+        assert_eq!(fs.group_count, 1);
+        let group = rsext4::bmalloc::BGIndex::new(0);
+        let descriptor = fs.get_group_desc_mut(group).unwrap();
+        descriptor.bg_used_dirs_count_lo = 0xffff;
+        descriptor.bg_used_dirs_count_hi = 0;
+
+        mkdir(&mut jbd2_dev, &mut fs, "/carried").unwrap();
+
+        let descriptor = fs.get_group_desc(group).unwrap();
+        assert_eq!(descriptor.bg_used_dirs_count_lo, 0);
+        assert_eq!(descriptor.bg_used_dirs_count_hi, 1);
+    }
 }
