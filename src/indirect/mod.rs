@@ -951,7 +951,7 @@ mod tests {
     use super::{
         DIRECT_BLOCKS, DOUBLE_INDIRECT_SLOT, IndirectPath, SINGLE_INDIRECT_SLOT,
         TRIPLE_INDIRECT_SLOT, allocate_legacy_inode_block, block_to_path,
-        collect_legacy_inode_ownership, has_legacy_indirect_mapping,
+        collect_legacy_inode_ownership, has_legacy_indirect_mapping, resolve_legacy_inode_blocks,
     };
     use crate::{
         BLOCK_SIZE, BlockIo, DeviceCapabilities, DeviceGeometry, ErrorContext, Ext4Error,
@@ -1084,6 +1084,26 @@ mod tests {
             .expect("legacy direct pointer should resolve");
 
         assert_eq!(resolved, Some(physical));
+    }
+
+    #[test]
+    fn fast_symlink_target_is_not_read_as_block_pointers() {
+        let (mut device, mut filesystem) = setup_filesystem();
+        let physical = filesystem.alloc_block(&mut device).unwrap();
+        let inode_number = InodeNumber::new(12).unwrap();
+        // A fast symlink keeps its target in `i_block`, so the first word
+        // looks like a pointer to an allocated block, but no block is mapped.
+        let mut inode = Ext4Inode {
+            i_mode: Ext4Inode::S_IFLNK,
+            i_size_lo: 4,
+            ..Default::default()
+        };
+        inode.i_block[0] = physical.to_u32().unwrap();
+
+        let mappings =
+            resolve_legacy_inode_blocks(&filesystem, &mut device, inode_number, &inode).unwrap();
+
+        assert!(mappings.is_empty());
     }
 
     #[test]
