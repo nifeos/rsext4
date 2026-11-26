@@ -255,6 +255,15 @@ mod tests {
     }
 
     #[test]
+    fn checked_inode_codec_accepts_a_record_of_exactly_the_base_size() {
+        let mut raw = alloc::vec![0; Ext4Inode::GOOD_OLD_INODE_SIZE as usize];
+        raw[0..2].copy_from_slice(&0x81a4_u16.to_le_bytes());
+
+        let inode = Ext4Inode::decode_checked(&raw).expect("a base-size inode must decode");
+        assert_eq!(inode.i_mode, 0x81a4);
+    }
+
+    #[test]
     fn inode_codec_preserves_fields_beyond_extra_isize() {
         // Test idea: serializing a parsed inode must not overwrite the inline
         // xattr region with zero-valued fields that i_extra_isize excludes.

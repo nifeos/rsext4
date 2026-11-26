@@ -824,6 +824,7 @@ mod tests {
 
         assert_eq!(cache.stats().total_entries, 2);
         assert_eq!(cache.stats().max_entries, 2);
+        assert_eq!(cache.stats().total_size_bytes, 2 * BLOCK_SIZE);
     }
 
     #[cfg(feature = "USE_MULTILEVEL_CACHE")]
