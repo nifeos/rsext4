@@ -3411,7 +3411,12 @@ fn linux_uninit_bg_image_mounts_writable_and_remains_clean() {
     let (temp_dir, image) = create_ext4_test_image_with_args(
         "rsext4-uninit-bg",
         "256M",
-        &["-O", "^metadata_csum,uninit_bg", "-E", "lazy_itable_init=1"],
+        &[
+            "-O",
+            "^metadata_csum,uninit_bg",
+            "-E",
+            "lazy_itable_init=1,assume_storage_prezeroed=1",
+        ],
     );
     let dump = run_command(
         {
