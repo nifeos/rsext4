@@ -1052,17 +1052,17 @@ fn finalize_restarted_inode_update<B: BlockIo>(
 ///
 /// The tail is zeroed in place, outside any transaction, so a rollback or a
 /// journal recovery cannot bring it back. Committing first orders it: before
-/// this commit, a failure or a crash leaves the old size over an intact tail;
-/// after it, orphan recovery finishes the shrink and zeroes the tail. Without
-/// the commit, these updates would stay in the running transaction, and a
-/// failed or interrupted commit of that transaction would bring back the old
-/// size over a zeroed tail. A restarted shrink stays in `pending_shrinks`
-/// until it finishes: a failed zeroing is not undone, orphan recovery
-/// finishes the shrink after a crash, and on a mounted filesystem a later
-/// truncate, growing write or preallocation finishes it first, even after
-/// the inode loses its last name. A shrink to a block boundary that fits in
-/// one transaction zeroes nothing and needs neither. Orphan recovery and the
-/// final reap shrink an inode whose size is already on disk.
+/// this commit, a failure or a crash leaves the old size over an intact tail.
+/// After it, the shrink stays in `pending_shrinks` until it finishes: a
+/// failed zeroing is not undone, orphan recovery finishes the shrink after a
+/// crash, and on a mounted filesystem a later truncate, growing write or
+/// preallocation finishes it first, even after the inode loses its last
+/// name. Without the commit, these updates would stay in the running
+/// transaction, and a failed or interrupted commit of that transaction would
+/// bring back the old size over a zeroed tail. A shrink to a block boundary
+/// that fits in one transaction zeroes nothing and needs neither. Orphan
+/// recovery and the final reap shrink an inode whose size is already on
+/// disk.
 fn publish_truncate_before_zeroing<B: BlockIo>(
     device: &mut Jbd2Dev<B>,
     fs: &mut Ext4FileSystem,
@@ -1080,9 +1080,7 @@ fn publish_truncate_before_zeroing<B: BlockIo>(
     let updated = fs.with_metadata_transaction(device, 2, |fs, device| {
         // A failure in this transaction restores the set with the rest of
         // the in-memory state, so the shrink is pending only once published.
-        if restarts {
-            fs.pending_shrinks.insert(inode_num);
-        }
+        fs.pending_shrinks.insert(inode_num);
         let mut updated = original_inode;
         updated.i_size_lo = truncate_size as u32;
         updated.i_size_high = (truncate_size >> 32) as u32;

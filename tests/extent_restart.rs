@@ -1395,6 +1395,36 @@ fn failed_tail_zeroing_after_first_restart_commit_keeps_old_legacy_bytes_hidden(
 }
 
 #[cfg(not(feature = "USE_MULTILEVEL_CACHE"))]
+#[test]
+fn failed_tail_zeroing_after_small_truncate_commit_keeps_old_bytes_hidden() {
+    for mapping in [SmallFileMapping::Extent, SmallFileMapping::Legacy] {
+        let (mut journal, mut filesystem, power_cut, inode_number, first_block) =
+            build_small_file_fixture(mapping);
+        let mut inode = filesystem
+            .get_inode_by_num(&mut journal, inode_number)
+            .expect("inode read failed");
+        let second_block = rsext4::loopfile::resolve_inode_block(
+            &filesystem,
+            &mut journal,
+            inode_number,
+            &mut inode,
+            1,
+        )
+        .expect("second block lookup failed")
+        .expect("second block must be mapped");
+        assert_failed_tail_zeroing_keeps_old_bytes_hidden(
+            &power_cut,
+            &mut journal,
+            &mut filesystem,
+            inode_number,
+            first_block,
+            second_block,
+            None,
+        );
+    }
+}
+
+#[cfg(not(feature = "USE_MULTILEVEL_CACHE"))]
 const LATER_WRITE_JOURNAL_BLOCKS: u32 = 128;
 
 /// Shrinks a file to 100 bytes and fails the write that zeroes its EOF tail,

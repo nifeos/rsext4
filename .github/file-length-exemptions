@@ -3,10 +3,10 @@
 # a change to it fails until the entry changes too. Code the fork writes meets the limit in full.
 # <path> <lines> <reason>
 src/blockdev/journal.rs 5333 upstream code, unchanged but for two checks the clean unmount calls, made pub(crate)
-src/file/io.rs 3129 upstream code, plus 99 lines of fixes 2b and 2c, which upstream pull requests 2829 and 2845 add to the same file
+src/file/io.rs 3127 upstream code, plus 97 lines of fixes 2b and 2c, which upstream pull requests 2829 and 2845 add to the same file
 src/file/xattr.rs 2059 upstream code, unchanged
 src/jbd2/jbd2.rs 2474 upstream code, unchanged
 src/test_contracts.rs 2831 upstream code, unchanged
-tests/extent_restart.rs 2055 upstream code, plus the tests of fixes 2b and 2c, which upstream pull requests 2829 and 2845 add to the same file
+tests/extent_restart.rs 2085 upstream code, plus the tests of fixes 2b and 2c, which upstream pull requests 2829 and 2845 add to the same file
 tests/file_operations.rs 2624 upstream code, unchanged but for the Miri gate
 tests/linux_image_repro.rs 3691 upstream code, unchanged but for the Miri gate
