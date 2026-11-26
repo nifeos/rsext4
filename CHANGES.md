@@ -74,6 +74,8 @@ These are not meant for upstream.
 | `docs/unsafe-review.md` | added: a review of every use of `unsafe` in the crate and of each safety argument, as the input to a maintainer's review by hand |
 | `README.md` | rewritten to say what the fork is and how to build and test it |
 | `CHANGES.md` | added: this file |
+| `AGENTS.md` | added: the rules for working in the fork, among them how upstream `dev` is merged |
+| `.gitignore` | a last line un-ignores `AGENTS.md`, which upstream ignores and the fork tracks |
 | `LICENSE-APACHE` | added: a copy of upstream's `LICENSE`, the Apache License, Version 2.0, under the name the shared crate workflows read; `LICENSE` stays as upstream's |
 
 The repository's topics are `rust`, `no-std` and `filesystem`. The shared settings also give every crate repository `formal-verification` and `kani`, which apply here now that the crate carries Kani harnesses.
