@@ -10,3 +10,9 @@ permissions:
 jobs:
   mutation:
     uses: partsfoundry/crate-workflows/.github/workflows/mutation.yml@5cf2aab52489c44db735cce89b0fab05d784f070
+    with:
+      # The template's 200 assumes about 15 seconds a mutant. Here a mutant takes about 43: a
+      # 31-second rebuild of the crate and its tests, then the tests, and a mutant that makes a
+      # loop endless runs to cargo-mutants' 300-second timeout. Two hundred filled the 60-minute
+      # job; a hundred take about 40 minutes, with room for several timeouts.
+      mutants-per-shard: 100
