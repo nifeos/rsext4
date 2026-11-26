@@ -1669,6 +1669,11 @@ mod fault_tests {
         let mut filesystem = Ext4FileSystem::mount(&mut journal).expect("mount must succeed");
         let (first, _, shared_block) = create_shared_external_xattr(&mut journal, &mut filesystem);
         let before_free_blocks = filesystem.statfs().free_blocks;
+        // The test clock never advances, so an older change time shows whether
+        // the set rewrote the inode.
+        filesystem
+            .modify_inode(&mut journal, first, |inode| inode.i_ctime = 1)
+            .expect("age the change time");
 
         set_inode_xattr(
             &mut journal,
@@ -1690,6 +1695,7 @@ mod fault_tests {
         assert_eq!(first_store.block, shared_block);
         assert_eq!(first_store.refcount, 2);
         assert_eq!(filesystem.statfs().free_blocks, before_free_blocks);
+        assert_eq!(first_inode.i_ctime, 1);
     }
 
     #[test]

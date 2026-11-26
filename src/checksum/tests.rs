@@ -358,3 +358,21 @@ fn journal_superblock_checksum_uses_raw_crc_accumulator() {
     jbd2_update_superblock_checksum(&mut jsb);
     assert_eq!(jsb.s_checksum, 1091070733);
 }
+
+#[test]
+fn dx_checksum_rejects_blocks_too_short_for_a_count_and_limit() {
+    let sb = metadata_csum_superblock();
+    // A record length of 4 names neither a dx root nor a dx node.
+    let mut short = [0u8; 6];
+    short[4..6].copy_from_slice(&4u16.to_le_bytes());
+    assert_eq!(verify_ext4_dx_checksum(&sb, 1, 1, &short), Some(false));
+
+    let mut eight = [0u8; 8];
+    eight[4..6].copy_from_slice(&4u16.to_le_bytes());
+    assert_eq!(verify_ext4_dx_checksum(&sb, 1, 1, &eight), None);
+
+    // An encoded record length of zero spans the block, so the count and limit
+    // would start at byte 8 and run past a nine-byte block.
+    let nine = [0u8; 9];
+    assert_eq!(verify_ext4_dx_checksum(&sb, 1, 1, &nine), Some(false));
+}

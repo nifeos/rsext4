@@ -264,6 +264,18 @@ mod tests {
     }
 
     #[test]
+    fn checked_inode_codec_accepts_extra_fields_that_end_the_record() {
+        let mut raw = alloc::vec![0; Ext4Inode::GOOD_OLD_INODE_SIZE as usize + 4];
+        raw[128..130].copy_from_slice(&4u16.to_le_bytes());
+        raw[130..132].copy_from_slice(&0x1234u16.to_le_bytes());
+
+        let inode =
+            Ext4Inode::decode_checked(&raw).expect("extra fields ending the record must decode");
+        assert_eq!(inode.i_extra_isize, 4);
+        assert_eq!(inode.i_checksum_hi, 0x1234);
+    }
+
+    #[test]
     fn inode_codec_preserves_fields_beyond_extra_isize() {
         // Test idea: serializing a parsed inode must not overwrite the inline
         // xattr region with zero-valued fields that i_extra_isize excludes.
