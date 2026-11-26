@@ -513,7 +513,7 @@ impl<B: BlockIo> Jbd2Dev<B> {
         self.abort_state.as_ref().map(|state| state.cause)
     }
 
-    fn ensure_not_aborted(&self, operation: &'static str) -> Ext4Result<()> {
+    pub(crate) fn ensure_not_aborted(&self, operation: &'static str) -> Ext4Result<()> {
         if self.journal_abort_cause().is_some() {
             Err(Ext4Error::journal_aborted().with_operation(operation))
         } else {
@@ -521,7 +521,7 @@ impl<B: BlockIo> Jbd2Dev<B> {
         }
     }
 
-    fn ensure_journal_state_reinstallable(&self) -> Ext4Result<()> {
+    pub(crate) fn ensure_journal_state_reinstallable(&self) -> Ext4Result<()> {
         let pending_transaction = self.system.as_ref().is_some_and(|system| {
             !system.running_transaction.updates.is_empty()
                 || !system.running_transaction.revoked_blocks.is_empty()

@@ -44,6 +44,7 @@ test.
 | files | what it fixes | upstream |
 |---|---|---|
 | `src/hashtree/mutation.rs`, `tests/directory_operations.rs` | growing an indexed directory by one block set the inode's block count after the extent tree had added its leaf and index blocks to it, so the count left them out and e2fsck reported a short `i_blocks`; the data block is now counted before the extent is inserted | part of commit `dde4020be` ([pull request 2525](https://github.com/rcore-os/tgoskits/pull/2525)), merged |
+| `src/ext4/sync.rs`, `src/blockdev/journal.rs`, `tests/clean_unmount.rs`, `tests/integration_test.rs` | unmount cleared the RECOVER flag in the superblock it sent through the journal, so the checkpoint could write that superblock home before it reset the journal start, and a power cut between the two writes left a volume that claimed no recovery was needed while its journal still held a transaction; RECOVER now stays set through the checkpoint, and the clean superblock is written directly once the journal is empty | part of commit `dde4020be` ([pull request 2525](https://github.com/rcore-os/tgoskits/pull/2525)), merged |
 
 ## Changes only this fork needs
 
