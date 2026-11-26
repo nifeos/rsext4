@@ -224,7 +224,12 @@ pub(crate) fn write_clean_superblock<B: BlockIo>(
     device: &mut Jbd2Dev<B>,
     superblock: &Ext4Superblock,
 ) -> Ext4Result<()> {
-    device.ensure_clean_publication_ready()?;
+    // The journal must own no transaction, handle or reservation, so
+    // RECOVER is cleared only after the durable journal tail is empty. An
+    // unpublished block edit is refused by the uncached read and the durable
+    // write below.
+    device.ensure_not_aborted("unmount:journal_aborted")?;
+    device.ensure_journal_state_reinstallable()?;
     let block_size = device.block_size() as usize;
     let offset = Ext4Superblock::SUPERBLOCK_OFFSET as usize;
     let block = AbsoluteBN::new((offset / block_size) as u64);

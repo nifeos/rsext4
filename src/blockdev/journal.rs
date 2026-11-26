@@ -513,7 +513,7 @@ impl<B: BlockIo> Jbd2Dev<B> {
         self.abort_state.as_ref().map(|state| state.cause)
     }
 
-    fn ensure_not_aborted(&self, operation: &'static str) -> Ext4Result<()> {
+    pub(crate) fn ensure_not_aborted(&self, operation: &'static str) -> Ext4Result<()> {
         if self.journal_abort_cause().is_some() {
             Err(Ext4Error::journal_aborted().with_operation(operation))
         } else {
@@ -521,19 +521,7 @@ impl<B: BlockIo> Jbd2Dev<B> {
         }
     }
 
-    /// Refuses the clean superblock write while the journal still owns any
-    /// transaction, edit or reservation, so `RECOVER` is cleared only after
-    /// the durable journal tail is empty.
-    pub(crate) fn ensure_clean_publication_ready(&self) -> Ext4Result<()> {
-        self.ensure_not_aborted("unmount:journal_aborted")?;
-        self.ensure_journal_state_reinstallable()?;
-        if self.inner.has_unpublished_edit() {
-            return Err(Ext4Error::busy().with_operation("jbd2:prepare_with_active_edit"));
-        }
-        Ok(())
-    }
-
-    fn ensure_journal_state_reinstallable(&self) -> Ext4Result<()> {
+    pub(crate) fn ensure_journal_state_reinstallable(&self) -> Ext4Result<()> {
         let pending_transaction = self.system.as_ref().is_some_and(|system| {
             !system.running_transaction.updates.is_empty()
                 || !system.running_transaction.revoked_blocks.is_empty()
