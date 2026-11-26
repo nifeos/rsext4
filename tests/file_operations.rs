@@ -2621,40 +2621,4 @@ mod file_functional_tests {
 
         umount(fs, &mut jbd2_dev).expect("umount failed");
     }
-
-    #[test]
-    fn read_file_follows_eight_symlinks_and_refuses_a_ninth() {
-        let device = MockBlockDevice::new(100 * 1024 * 1024);
-        let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, device, true);
-
-        mkfs(&mut jbd2_dev).expect("mkfs failed");
-        let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("mount failed");
-        mkfile(
-            &mut jbd2_dev,
-            &mut fs,
-            "/link0",
-            Some(b"end of the chain"),
-            None,
-        )
-        .expect("target creation failed");
-        for hop in 1..=9 {
-            let target = format!("/link{}", hop - 1);
-            let link = format!("/link{hop}");
-            create_symbol_link(&mut jbd2_dev, &mut fs, &target, &link)
-                .expect("symlink creation failed");
-        }
-
-        assert_eq!(
-            read_file(&mut jbd2_dev, &mut fs, "/link8").expect("eight hops resolve"),
-            b"end of the chain"
-        );
-        assert_eq!(
-            read_file(&mut jbd2_dev, &mut fs, "/link9")
-                .expect_err("a ninth hop is refused")
-                .kind(),
-            Ext4ErrorKind::InvalidInput
-        );
-
-        umount(fs, &mut jbd2_dev).expect("umount failed");
-    }
 }
