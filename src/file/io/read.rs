@@ -201,10 +201,18 @@ fn read_symlink_target<B: BlockIo>(
     inode_num: InodeNumber,
     inode: &mut Ext4Inode,
 ) -> Ext4Result<Vec<u8>> {
-    let size = inode.size() as usize;
-    if size == 0 {
+    let block_bytes = fs.block_size();
+    let recorded_size = inode.size();
+    if recorded_size == 0 {
         return Ok(Vec::new());
     }
+    // A target and its terminating zero fit in one block, as Linux requires
+    // when it creates a symlink. A larger recorded size is refused before it
+    // can size the buffer below.
+    if recorded_size >= block_bytes as u64 {
+        return Err(Ext4Error::corrupted().with_operation("symlink:target_size"));
+    }
+    let size = recorded_size as usize;
 
     // Fast symlinks consume no data blocks. Length alone is insufficient:
     // e2fsprogs stores a 60-byte target in a regular data block.
@@ -219,7 +227,6 @@ fn read_symlink_target<B: BlockIo>(
         return Ok(raw[..size].to_vec());
     }
 
-    let block_bytes = fs.block_size();
     let total_blocks = size.div_ceil(block_bytes);
     let mut buf = Vec::with_capacity(size);
 

@@ -1434,6 +1434,84 @@ fn owned_symlink_create_uses_linux_fast_boundary() {
 }
 
 #[test]
+fn owned_symlink_target_and_its_terminating_zero_fit_in_one_block() {
+    let mut filesystem = owned_test_filesystem();
+    let root = filesystem.root_inode();
+    let context = MutationContext::new(1000, 1001, 0, 0);
+    let longest = vec![b'c'; rsext4::BLOCK_SIZE - 1];
+    let one_block = vec![b'd'; rsext4::BLOCK_SIZE];
+
+    let link = filesystem
+        .create_symlink(
+            context,
+            root,
+            FileName::new(b"longest-link").expect("valid raw name"),
+            &longest,
+        )
+        .expect("a target one byte short of a block fits");
+    let refused = filesystem
+        .create_symlink(
+            context,
+            root,
+            FileName::new(b"one-block-link").expect("valid raw name"),
+            &one_block,
+        )
+        .expect_err("a target as long as a block leaves no room for its terminating zero");
+    assert_eq!(refused.kind(), Ext4ErrorKind::InvalidInput);
+    assert!(
+        filesystem
+            .lookup_child(
+                root,
+                FileName::new(b"one-block-link").expect("valid raw name")
+            )
+            .expect("lookup refused link")
+            .is_none()
+    );
+
+    let mut output = vec![0u8; rsext4::BLOCK_SIZE];
+    let read = filesystem
+        .read_inode(link.number, 0, &mut output)
+        .expect("read longest symlink");
+    assert_eq!(&output[..read], &longest[..]);
+}
+
+#[test]
+fn symlink_whose_recorded_size_passes_one_block_is_refused_before_reading() {
+    let device = TestBlockDevice::new(100 * 1024 * 1024);
+    let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, device, true);
+
+    mkfs(&mut jbd2_dev).expect("mkfs failed");
+    let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("mount failed");
+    let target = format!("/{}", "t".repeat(70));
+    mkfile(&mut jbd2_dev, &mut fs, &target, None, None).expect("target creation failed");
+    create_symbol_link(&mut jbd2_dev, &mut fs, &target, "/slow-link")
+        .expect("symlink creation failed");
+    let (link, _) = dir::get_inode_with_num(&mut fs, &mut jbd2_dev, "/slow-link")
+        .unwrap()
+        .expect("symlink exists");
+
+    for recorded_size in [BLOCK_SIZE as u64, 1 << 40, u64::MAX] {
+        fs.modify_inode(&mut jbd2_dev, link, |inode| inode.set_size(recorded_size))
+            .unwrap();
+        let mut output = [0u8; 128];
+        let refused = read_inode_data_into(&mut jbd2_dev, &mut fs, link, 0, &mut output)
+            .expect_err("a symlink target never fills a whole block");
+        assert_eq!(refused.kind(), Ext4ErrorKind::Corrupted);
+        let refused = read_file(&mut jbd2_dev, &mut fs, "/slow-link")
+            .expect_err("following the symlink reads its target first");
+        assert_eq!(refused.kind(), Ext4ErrorKind::Corrupted);
+    }
+
+    fs.modify_inode(&mut jbd2_dev, link, |inode| {
+        inode.set_size(target.len() as u64)
+    })
+    .unwrap();
+    let mut output = [0u8; 128];
+    let read = read_inode_data_into(&mut jbd2_dev, &mut fs, link, 0, &mut output).unwrap();
+    assert_eq!(&output[..read], target.as_bytes());
+}
+
+#[test]
 fn test_basic_mount_mkfs() {
     let device = TestBlockDevice::new(100 * 1024 * 1024); // 100MB
     let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, device, true);
