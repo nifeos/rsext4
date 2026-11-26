@@ -522,7 +522,7 @@ impl<B: BlockIo> Jbd2Dev<B> {
     }
 
     /// Refuses the clean superblock write while the journal still owns any
-    /// transaction, edit or reservation, so RECOVER is cleared only after
+    /// transaction, edit or reservation, so `RECOVER` is cleared only after
     /// the durable journal tail is empty.
     pub(crate) fn ensure_clean_publication_ready(&self) -> Ext4Result<()> {
         self.ensure_not_aborted("unmount:journal_aborted")?;
