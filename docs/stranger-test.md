@@ -18,4 +18,26 @@ What a run is:
    not against the stranger.
 4. Record the date on the line below.
 
-Last run: none
+Last run: 2026-11-25
+
+## What the last run did
+
+A fresh clone and the README, on a machine that already had Rust, the three bare-metal targets,
+the 1.94 toolchain, Kani 0.68.0 and e2fsprogs 1.47.2. It followed "Building and testing", "What is
+proven" and "Minimum Rust version" command by command.
+
+- `cargo build` and `cargo test --all-features` pass: 629 tests, 0 failed. `cargo build --lib`
+  passes for `aarch64-unknown-none-softfloat`, `riscv64imac-unknown-none-elf` and
+  `x86_64-unknown-none`.
+- `cargo kani` ends with `Complete - 8 successfully verified harnesses, 0 failures, 8 total.`
+  after 3 minutes 36 seconds. One harness by its full path takes about 6 seconds.
+- With the `directory_entry_parse_is_total` falsification applied, that harness fails with
+  `VERIFICATION:- FAILED`, and the reversed patch leaves `git status` clean.
+- At Rust 1.94, the stated minimum, the tests and the three bare-metal builds pass.
+
+The README then lacked the Kani install, how long the proofs take, how to run one harness, what a
+passing proof run prints that looks alarming, how to apply and revert a falsification patch, the
+`rustup target add` for the minimum toolchain, where e2fsprogs comes from, and the `Cell` import
+in its example. This version adds each of them.
+
+Result: fail. This version of the README corrects every finding.
