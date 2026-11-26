@@ -1824,6 +1824,8 @@ impl<B: BlockIo> Clock for Jbd2Dev<B> {
 #[cfg(test)]
 #[cfg(not(miri))]
 mod tests {
+    mod queue_state;
+
     use alloc::vec;
 
     use super::*;

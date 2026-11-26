@@ -22,7 +22,7 @@ src/file/xattr.rs persist_xattrs 140 upstream code, unchanged
 src/file/xattr.rs parse_xattrs 103 upstream code, unchanged
 src/file/xattr.rs failed_split_store_inode_publish_restores_inline_value_and_allocation 122 upstream code, unchanged
 src/hashtree/mutation.rs make_indexed_directory 142 upstream code, unchanged
-src/hashtree/mutation.rs split_leaf_and_insert 144 upstream code, unchanged
+src/hashtree/mutation.rs split_leaf_and_insert 142 upstream code, unchanged but for the shared logical block check
 src/indirect/mod.rs allocate_legacy_inode_block 127 upstream code, unchanged
 src/jbd2/jbd2.rs JBD2DEVSYSTEM::parse_replay_tags 120 upstream code, unchanged
 src/jbd2/jbd2.rs JBD2DEVSYSTEM::commit_transaction_with_mapping 249 upstream code, unchanged
