@@ -1073,6 +1073,14 @@ mod tests {
             block_to_path(BLOCK_SIZE, (12 + pointers + double) as u32).unwrap(),
             IndirectPath::nested(&[TRIPLE_INDIRECT_SLOT, 0, 0, 0])
         );
+        assert_eq!(
+            block_to_path(
+                BLOCK_SIZE,
+                (12 + pointers + double + double + 3 * pointers + 5) as u32
+            )
+            .unwrap(),
+            IndirectPath::nested(&[TRIPLE_INDIRECT_SLOT, 1, 3, 5])
+        );
         let maximum = 12u64 + pointers as u64 + double as u64 + double as u64 * pointers as u64;
         assert_eq!(
             block_to_path(BLOCK_SIZE, maximum as u32)
