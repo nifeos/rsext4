@@ -441,9 +441,7 @@ fn split_leaf_and_insert<B: BlockIo>(
     let mut updated_parent = *parent_inode;
     let (new_logical, new_leaf_block) =
         append_directory_block(fs, device, parent_ino, &mut updated_parent)?;
-    if new_logical > DX_BLOCK_MASK {
-        return Err(Ext4Error::overflow().with_operation("htree:logical_block"));
-    }
+    check_dx_logical_block(new_logical, "htree:logical_block")?;
     let mut parent_entries = parent_frame.entries.clone();
     parent_entries.insert(
         insert_at,
@@ -592,9 +590,7 @@ fn promote_full_root<B: BlockIo>(
     let mut updated_parent = *parent_inode;
     let (new_logical, new_index_block) =
         append_directory_block(fs, device, parent_ino, &mut updated_parent)?;
-    if new_logical > DX_BLOCK_MASK {
-        return Err(Ext4Error::overflow().with_operation("htree:index_logical_block"));
-    }
+    check_dx_logical_block(new_logical, "htree:index_logical_block")?;
     let mut index_data = new_internal_node(fs.block_size())?;
     encode_dx_entries(
         &mut index_data,
@@ -694,9 +690,7 @@ fn split_index_below_parent<B: BlockIo>(
     let mut updated_parent = *parent_inode;
     let (new_logical, new_index_block) =
         append_directory_block(fs, device, parent_ino, &mut updated_parent)?;
-    if new_logical > DX_BLOCK_MASK {
-        return Err(Ext4Error::overflow().with_operation("htree:index_logical_block"));
-    }
+    check_dx_logical_block(new_logical, "htree:index_logical_block")?;
     let plan = plan_index_split(parent_frame, index_frame, new_logical)?;
     let mut new_data = new_internal_node(fs.block_size())?;
     encode_dx_entries(
@@ -1067,6 +1061,15 @@ fn encode_dx_entries(
     Ok(())
 }
 
+/// Refuses a new directory block whose logical number does not fit the block field of a dx
+/// entry.
+fn check_dx_logical_block(new_logical: u32, operation: &'static str) -> Ext4Result<()> {
+    if new_logical > DX_BLOCK_MASK {
+        return Err(Ext4Error::overflow().with_operation(operation));
+    }
+    Ok(())
+}
+
 fn append_directory_block<B: BlockIo>(
     fs: &mut Ext4FileSystem,
     device: &mut Jbd2Dev<B>,
@@ -1146,6 +1149,18 @@ fn hash_tree_error(error: HashTreeError) -> Ext4Error {
 #[cfg(not(miri))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dx_logical_blocks_stop_at_the_block_field_width() {
+        assert!(check_dx_logical_block(DX_BLOCK_MASK, "test").is_ok());
+        assert_eq!(
+            check_dx_logical_block(DX_BLOCK_MASK + 1, "test")
+                .expect_err("the block field holds 28 bits")
+                .kind(),
+            crate::Ext4ErrorKind::Overflow
+        );
+        assert!(check_dx_logical_block(0, "test").is_ok());
+    }
 
     fn split_entry(hash: u32, source_record_len: usize) -> LeafEntry {
         LeafEntry {

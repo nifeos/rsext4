@@ -4,6 +4,7 @@
 # refused too, so this list can only shrink by a diff that says why.
 src/blockgroup_description/desc.rs:149 # the high half is shifted past the 32 bits the low half fills, so the two never share a set bit and `^` composes them as `|` does
 src/extents_tree/remove.rs:176 # the high half is shifted past the 32 bits the low half fills, so the two never share a set bit and `^` composes them as `|` does
+src/dir/insert.rs:126 # `offset * rec_len` holds the walk at offset 0 once the first record has no room, so the mutant can only hang, and a hang is all a test of it can see
 src/disknode/inode_flags.rs:34 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
 src/disknode/inode_flags.rs:35 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
 src/disknode/inode_flags.rs:36 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
