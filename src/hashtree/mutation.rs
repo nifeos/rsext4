@@ -10,7 +10,7 @@ use crate::{
         update_ext4_dirblock_csum32, update_ext4_dx_checksum, verify_ext4_dirblock_checksum,
     },
     crc32c::ext4_superblock_has_metadata_csum,
-    dir::FileName,
+    dir::{FileName, MountedDirectoryRead},
     disknode::Ext4Inode,
     endian::{DiskFormat, read_u16_le, read_u32_le, write_u16_le, write_u32_le},
     entries::{
@@ -79,18 +79,16 @@ pub(crate) fn insert_indexed_directory_entry<B: BlockIo>(
 ) -> Ext4Result<()> {
     let manager = HashTreeManager::new(fs.superblock.s_hash_seed);
     let indexed_inode = *parent_inode;
-    let (search, root) = manager
-        .prepare_search(
-            fs,
-            device,
-            parent_ino,
-            &indexed_inode,
-            child_name.as_bytes(),
-        )
-        .map_err(hash_tree_error)?;
-    let path = manager
-        .probe_path(fs, device, search, &root)
-        .map_err(hash_tree_error)?;
+    let (search, path) = {
+        let mut reader = MountedDirectoryRead::new(fs, device, parent_ino, indexed_inode);
+        let (search, root) = manager
+            .prepare_search(&mut reader, child_name.as_bytes())
+            .map_err(hash_tree_error)?;
+        let path = manager
+            .probe_path(&mut reader, search, &root)
+            .map_err(hash_tree_error)?;
+        (search, path)
+    };
     let logical_block = path.current_entry().map_err(hash_tree_error)?.block;
     let physical_block = resolve_inode_block(
         fs,

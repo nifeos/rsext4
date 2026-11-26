@@ -84,7 +84,9 @@ impl MetadataTransactionSnapshot {
         filesystem.group_descs = self.group_descs;
         filesystem.dirty_group_descs = self.dirty_group_descs;
         filesystem.bitmap_cache = self.bitmap_cache;
-        filesystem.inodetable_cache = self.inodetable_cache;
+        filesystem
+            .inodetable_cache
+            .restore_snapshot(self.inodetable_cache);
         filesystem.datablock_cache = self.datablock_cache;
         filesystem.pending_shrinks = self.pending_shrinks;
     }
@@ -112,6 +114,7 @@ impl Ext4FileSystem {
         credits: impl Into<TransactionCredits>,
         operation: impl FnOnce(&mut Self, &mut Jbd2Dev<B>) -> Ext4Result<T>,
     ) -> Ext4Result<T> {
+        let _read_visibility = self.inodetable_cache.pause_readers();
         let snapshot = MetadataTransactionSnapshot::capture(self);
         let result = block_dev
             .with_transaction_credits(credits.into(), |block_dev| operation(self, block_dev));
@@ -134,6 +137,7 @@ impl Ext4FileSystem {
         credits: impl Into<TransactionCredits>,
         operation: impl FnOnce(&mut Self, &mut Jbd2Dev<B>) -> Ext4Result<T>,
     ) -> Ext4Result<T> {
+        let _read_visibility = self.inodetable_cache.pause_readers();
         let snapshot = MetadataTransactionSnapshot::capture(self);
         let result =
             block_dev.restart_transaction(credits.into(), |block_dev| operation(self, block_dev));
@@ -433,6 +437,18 @@ impl Ext4FileSystem {
         block_dev: &mut Jbd2Dev<B>,
         inode_num: InodeNumber,
     ) -> Ext4Result<(Ext4Inode, Vec<u8>)> {
+        let (block_num, offset) = self.inode_table_location(inode_num)?;
+        let cached = self
+            .inodetable_cache
+            .get_or_load(block_dev, inode_num, block_num, offset)?;
+        Ok((cached.inode, cached.raw_inode().to_vec()))
+    }
+
+    /// Resolves immutable mounted table geometry without bitmap or table I/O.
+    pub(crate) fn inode_table_location(
+        &self,
+        inode_num: InodeNumber,
+    ) -> Ext4Result<(AbsoluteBN, usize)> {
         let (group_idx, _idx_in_group) = self.inode_allocator.global_to_group(inode_num)?;
 
         let inode_table_start = self
@@ -448,10 +464,7 @@ impl Ext4FileSystem {
             self.block_size(),
         )?;
 
-        let cached = self
-            .inodetable_cache
-            .get_or_load(block_dev, inode_num, block_num, offset)?;
-        Ok((cached.inode, cached.raw_inode().to_vec()))
+        Ok((block_num, offset))
     }
 
     /// Returns an aggregated statfs-style snapshot.

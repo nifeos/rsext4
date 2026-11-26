@@ -1,8 +1,8 @@
 [package]
 name = "rsext4"
-version = "0.10.0-nifeos.1"
+version = "0.10.0-partsfoundry.1"
 edition = "2024"
-rust-version = "1.94"
+rust-version = "1.95"
 description = "A lightweight ext4 file system."
 authors = ["Dirinkbottle <2909128143@qq.com>"]
 repository = "https://github.com/partsfoundry/rsext4"
@@ -12,6 +12,7 @@ license = "Apache-2.0"
 
 [dependencies]
 bitflags = "2.10"
+spinning_top = { version = "0.3", default-features = false }
 thiserror = { version = "2", default-features = false }
 
 [features]

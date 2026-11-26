@@ -5,19 +5,21 @@
 src/dir/bootstrap.rs create_lost_found_directory 101 upstream code, unchanged
 src/dir/insert.rs insert_dir_entry_raw 209 upstream code, unchanged
 src/dir/mkdir.rs create_directory_at_inner 236 upstream code, unchanged
-src/ext4/alloc.rs Ext4FileSystem::alloc_blocks 102 upstream code, unchanged
+src/ext4/alloc.rs Ext4FileSystem::alloc_blocks 104 upstream code, unchanged
 src/ext4/alloc.rs Ext4FileSystem::alloc_inodes 113 upstream code, plus 2 lines of fix 9, which upstream pull request 2825 adds to the same function
+src/ext4/grow/resize_inode.rs validate 106 upstream code, unchanged
+src/ext4/grow/step.rs Ext4FileSystem::prepare_growth_step 200 upstream code, unchanged
 src/ext4/mkfs.rs compute_fs_layout 112 upstream code, unchanged
-src/ext4/mount.rs Ext4FileSystem::mount_inner 268 upstream code, plus 1 line of fix 2b, which upstream pull request 2829 adds to the same function
-src/ext4/owned.rs Ext4::read_directory_with_reader 122 upstream code, unchanged
+src/ext4/mount.rs Ext4FileSystem::mount_inner 320 upstream code, plus 1 line of fix 2b, which upstream pull request 2829 adds to the same function
+src/ext4/owned/directory.rs Ext4::read_directory_with_reader 122 upstream code, unchanged
 src/extents_tree/convert.rs ExtentTree::split_extent_recursive 132 upstream code, unchanged
 src/extents_tree/insert.rs ExtentTree::insert_recursive 150 upstream code, unchanged
 src/extents_tree/remove.rs ExtentTree::remove_extent 469 upstream code, plus 2 lines of fix 2a, which upstream pull request 2827 adds to the same function
 src/extents_tree/remove.rs remove_extent::leaf_step 130 upstream code, unchanged
 src/file/create.rs create_inode_at_inner 217 upstream code, unchanged
 src/file/delete.rs delete_dir 131 upstream code, unchanged
-src/file/io.rs truncate_inode_mapping 173 upstream code, plus 16 lines of fixes 2b and 2c, which upstream pull requests 2829 and 2845 add to the same function
-src/file/io.rs write_inode_data_through_unwritten 193 upstream code, unchanged
+src/file/io/resize.rs truncate_inode_mapping 173 upstream code, plus 16 lines of fixes 2b and 2c, which upstream pull requests 2829 and 2845 add to the same function
+src/file/write/unwritten/prepare.rs prepare_unwritten_write 111 upstream code, unchanged
 src/file/xattr.rs persist_xattrs 140 upstream code, unchanged
 src/file/xattr.rs parse_xattrs 103 upstream code, unchanged
 src/file/xattr.rs failed_split_store_inode_publish_restores_inline_value_and_allocation 122 upstream code, unchanged
@@ -25,8 +27,10 @@ src/hashtree/mutation.rs make_indexed_directory 142 upstream code, unchanged
 src/hashtree/mutation.rs split_leaf_and_insert 144 upstream code, unchanged
 src/indirect/mod.rs allocate_legacy_inode_block 127 upstream code, unchanged
 src/jbd2/jbd2.rs JBD2DEVSYSTEM::parse_replay_tags 120 upstream code, unchanged
-src/jbd2/jbd2.rs JBD2DEVSYSTEM::commit_transaction_with_mapping 249 upstream code, unchanged
+src/jbd2/jbd2.rs JBD2DEVSYSTEM::write_committing_transaction 246 upstream code, unchanged
 src/jbd2/jbd2.rs JBD2DEVSYSTEM::scan_one_transaction 214 upstream code, unchanged
+src/jbd2/jbd2.rs JBD2DEVSYSTEM::replay_transaction 117 upstream code, unchanged
+src/jbd2/jbd2.rs JBD2DEVSYSTEM::replay_with_preview 101 upstream code, unchanged
 src/superblock/default.rs Ext4Superblock::default 105 upstream code, unchanged
 src/superblock/disk.rs Ext4Superblock::from_disk_bytes 152 upstream code, unchanged
 src/superblock/disk.rs Ext4Superblock::to_disk_bytes 144 upstream code, unchanged
@@ -42,6 +46,8 @@ src/test_contracts.rs rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold
 tests/extent_restart.rs build_large_legacy_fixture 129 upstream code, unchanged
 tests/extent_restart.rs assert_first_restart_commit 111 fix 2b, as upstream pull request 2829 adds it
 tests/file_operations.rs failed_legacy_truncate_bitmap_write_restores_mapping_and_accounting 118 upstream code, unchanged
+tests/filesystem_growth.rs growth_round_trip 195 upstream code, unchanged
+tests/filesystem_growth.rs interrupted_growth_round_trip 289 upstream code, unchanged
 tests/integration_test.rs owned_mount_injects_clock_separately_from_block_io 132 upstream code, unchanged
 tests/linux_image_repro.rs linux_indexed_directory_lookup_uses_on_disk_htree_root 161 upstream code, unchanged
 tests/linux_image_repro.rs failed_linear_to_htree_conversion_restores_linear_directory 175 upstream code, unchanged

@@ -8,6 +8,9 @@
 
 use std::{cell::Cell, rc::Rc};
 
+#[path = "file_operations/read_plan.rs"]
+mod read_plan;
+
 use rsext4::{
     error::{Ext4Error, Ext4Result},
     *,
@@ -374,6 +377,41 @@ mod file_functional_tests {
         let new_data =
             read_file(&mut jbd2_dev, &mut fs, "/renametest/newname").expect("read_file failed");
         assert_eq!(new_data, test_data.to_vec());
+
+        // Renaming into the same directory can convert its linear block into
+        // an HTree or split an existing leaf, moving the source record.
+        for index in 0..128 {
+            let stem = format!("/renametest/{index:04}-{}", "x".repeat(96));
+            let source = format!("{stem}.pending");
+            let destination = format!("{stem}.data");
+            let contents = format!("rename payload {index}").into_bytes();
+            mkfile(&mut jbd2_dev, &mut fs, &source, Some(&contents), None)
+                .expect("create source before directory growth");
+            let outcome = rename(
+                &mut jbd2_dev,
+                &mut fs,
+                &source,
+                &destination,
+                RenameOptions::REPLACE,
+            )
+            .expect("rename must survive relocation of its source record");
+            assert!(outcome.replaced.is_none());
+            assert_eq!(
+                read_file(&mut jbd2_dev, &mut fs, &source)
+                    .expect_err("source name must disappear after directory growth")
+                    .kind(),
+                Ext4ErrorKind::NotFound,
+            );
+            assert_eq!(
+                read_file(&mut jbd2_dev, &mut fs, &destination)
+                    .expect("read relocated rename destination"),
+                contents,
+            );
+        }
+        let (_, directory) = dir::get_inode_with_num(&mut fs, &mut jbd2_dev, "/renametest")
+            .unwrap()
+            .unwrap();
+        assert_ne!(directory.i_flags & disknode::Ext4Inode::EXT4_INDEX_FL, 0);
 
         umount(fs, &mut jbd2_dev).expect("umount failed");
     }
@@ -1979,6 +2017,141 @@ mod file_functional_tests {
         let data = read_file(&mut jbd2_dev, &mut fs, "/extent-sparse-grow").unwrap();
         assert_eq!(data.len(), grown_size as usize);
         assert!(data.iter().all(|&byte| byte == 0));
+    }
+
+    /// Writing every other block makes one single-block extent per block, so
+    /// 1500 of them need a depth-2 tree whose root holds two level-1 index
+    /// nodes. Shrinking to one block removes every leaf under the second
+    /// index node, which must then be freed rather than written back empty.
+    #[test]
+    fn shrinking_extent_inode_past_a_whole_index_node_frees_that_node() {
+        const EXTENTS: u64 = 1500;
+        let device = MockBlockDevice::new(100 * 1024 * 1024);
+        let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, device, true);
+
+        mkfs(&mut jbd2_dev).expect("mkfs failed");
+        let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("mount failed");
+        mkfile(&mut jbd2_dev, &mut fs, "/extent-depth-two", None, None)
+            .expect("file creation failed");
+        for index in 0..EXTENTS {
+            let block = vec![(index % 251) as u8 + 1; BLOCK_SIZE];
+            write_file(
+                &mut jbd2_dev,
+                &mut fs,
+                "/extent-depth-two",
+                2 * index * BLOCK_SIZE as u64,
+                &block,
+            )
+            .unwrap();
+        }
+        let (inode_number, inode) =
+            dir::get_inode_with_num(&mut fs, &mut jbd2_dev, "/extent-depth-two")
+                .unwrap()
+                .unwrap();
+        // The inline root header is eh_magic, eh_entries, eh_max, eh_depth.
+        let root_entries = inode.i_block[0] >> 16;
+        let root_depth = inode.i_block[1] >> 16;
+        assert_eq!(root_depth, 2, "the fixture must build a depth-2 tree");
+        assert!(root_entries >= 2, "the root must hold two index nodes");
+        let free_blocks_before = fs.superblock.free_blocks_count();
+
+        truncate_inode(&mut jbd2_dev, &mut fs, inode_number, 100)
+            .expect("shrinking a depth-2 tree must succeed");
+
+        let data = read_file(&mut jbd2_dev, &mut fs, "/extent-depth-two").unwrap();
+        assert_eq!(data, vec![1u8; 100]);
+        // 1499 data blocks and at least the second index node and its
+        // leaves are free again.
+        assert!(fs.superblock.free_blocks_count() > free_blocks_before + EXTENTS);
+
+        umount(fs, &mut jbd2_dev).expect("unmount failed");
+        let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("remount failed");
+        let data = read_file(&mut jbd2_dev, &mut fs, "/extent-depth-two").unwrap();
+        assert_eq!(data, vec![1u8; 100]);
+    }
+
+    #[test]
+    fn failed_extent_truncate_keeps_every_byte_of_the_file() {
+        let (device, fail_after_write_sector) =
+            MockBlockDevice::with_write_failure_handle(100 * 1024 * 1024);
+        let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, device, true);
+
+        mkfs(&mut jbd2_dev).expect("mkfs failed");
+        let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("mount failed");
+        mkfile(&mut jbd2_dev, &mut fs, "/extent-truncate-tail", None, None)
+            .expect("file creation failed");
+        let original: Vec<u8> = (0..2 * BLOCK_SIZE).map(|i| (i % 251) as u8 + 1).collect();
+        write_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/extent-truncate-tail",
+            0,
+            &original,
+        )
+        .unwrap();
+        jbd2_dev.umount_commit().unwrap();
+        jbd2_dev.set_journal_use(false).unwrap();
+        let inode_table = fs.group_descs[0].inode_table();
+
+        fail_after_write_sector.set(Some(inode_table));
+        let error = truncate(&mut jbd2_dev, &mut fs, "/extent-truncate-tail", 100)
+            .expect_err("inode finalize failure must abort the extent truncate");
+        assert_eq!(error.kind(), Ext4ErrorKind::Io);
+
+        let data = read_file(&mut jbd2_dev, &mut fs, "/extent-truncate-tail").unwrap();
+        assert_eq!(data.len(), original.len());
+        let first_changed = data.iter().zip(&original).position(|(now, was)| now != was);
+        assert_eq!(
+            first_changed, None,
+            "a failed truncate must leave every byte of the file as it was"
+        );
+    }
+
+    #[cfg(not(feature = "USE_MULTILEVEL_CACHE"))]
+    #[test]
+    fn failed_tail_zeroing_write_leaves_the_shrink_to_orphan_recovery() {
+        let (device, fail_after_write_sector) =
+            MockBlockDevice::with_write_failure_handle(100 * 1024 * 1024);
+        let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, device, true);
+
+        mkfs(&mut jbd2_dev).expect("mkfs failed");
+        let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("mount failed");
+        mkfile(&mut jbd2_dev, &mut fs, "/tail-zeroing-write", None, None)
+            .expect("file creation failed");
+        let original: Vec<u8> = (0..2 * BLOCK_SIZE).map(|i| (i % 251) as u8 + 1).collect();
+        write_file(&mut jbd2_dev, &mut fs, "/tail-zeroing-write", 0, &original).unwrap();
+        jbd2_dev.umount_commit().unwrap();
+        jbd2_dev.set_journal_use(false).unwrap();
+        let (inode_number, mut inode) =
+            dir::get_inode_with_num(&mut fs, &mut jbd2_dev, "/tail-zeroing-write")
+                .unwrap()
+                .unwrap();
+        let retained_block =
+            loopfile::resolve_inode_block(&fs, &mut jbd2_dev, inode_number, &mut inode, 0)
+                .unwrap()
+                .expect("retained block missing");
+
+        fail_after_write_sector.set(Some(retained_block.raw()));
+        let error = truncate(&mut jbd2_dev, &mut fs, "/tail-zeroing-write", 100)
+            .expect_err("a failed tail zeroing write must fail the truncate");
+        assert_eq!(error.kind(), Ext4ErrorKind::Io);
+        // The new size and the orphan record were published before the tail
+        // was zeroed, so the shrink is left to orphan recovery.
+        let inode = fs.get_inode_by_num(&mut jbd2_dev, inode_number).unwrap();
+        assert_eq!(inode.size(), 100);
+        assert_eq!(fs.superblock.s_last_orphan, inode_number.raw());
+
+        truncate(&mut jbd2_dev, &mut fs, "/tail-zeroing-write", 100)
+            .expect("the next truncate must finish the shrink");
+        assert_eq!(fs.superblock.s_last_orphan, 0);
+        let mut block = vec![0u8; BLOCK_SIZE];
+        jbd2_dev.read_blocks(&mut block, retained_block, 1).unwrap();
+        assert_eq!(block[..100], original[..100]);
+        assert_eq!(
+            block[100..].iter().position(|byte| *byte != 0),
+            None,
+            "recovery must zero the EOF block past the new size"
+        );
     }
 
     #[test]
