@@ -9,6 +9,9 @@
 //! - Supporting configuration and utilities (`config`, `endian`, `tool`)
 
 #![no_std]
+// Unsafe code lives only in `crc32c`, which allows it for the CPU instructions of its hardware path
+// and their tests; every other module is safe code.
+#![deny(unsafe_code)]
 extern crate alloc;
 
 #[cfg(test)]
@@ -61,6 +64,7 @@ pub mod bmalloc;
 pub mod cache;
 pub mod checksum;
 pub mod config;
+#[allow(unsafe_code)]
 pub mod crc32c;
 pub mod dir;
 pub mod disknode;
