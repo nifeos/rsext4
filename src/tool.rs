@@ -57,6 +57,9 @@ pub fn is_numbers_power(number: usize, base: usize) -> bool {
     if tmp_number == 1 {
         return true;
     }
+    if tmp_number == 0 {
+        return false;
+    }
     while tmp_number.is_multiple_of(base) {
         tmp_number /= base;
     }
