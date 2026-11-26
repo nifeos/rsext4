@@ -1,5 +1,8 @@
 //! Shared pieces of the rsext4 fuzz targets: an in-memory block device over the fuzz input, a
-//! fixed clock, and a bounded walk of a mounted filesystem.
+//! fixed clock, a bounded walk of a mounted filesystem, and the body of every target
+//! ([`targets`]).
+
+pub mod targets;
 
 use std::collections::BTreeSet;
 
