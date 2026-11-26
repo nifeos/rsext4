@@ -136,11 +136,13 @@ fn open(path: &PathBuf) -> Jbd2Dev<Image> {
 /// same file-preservation, new-space allocation and Linux consistency contract.
 #[test]
 fn growth_preserves_files_and_exposes_new_groups_to_linux() {
+    // The orphan file is named in every layout, since mkfs.ext4 1.47 and later
+    // turns it on by default and older versions leave it off.
     for (block_size, features) in [
-        ("1024", "metadata_csum,64bit"),
-        ("4096", "metadata_csum,64bit"),
-        ("1024", "^metadata_csum,^64bit,uninit_bg"),
-        ("4096", "^metadata_csum,^64bit,^uninit_bg"),
+        ("1024", "metadata_csum,64bit,orphan_file"),
+        ("4096", "metadata_csum,64bit,orphan_file"),
+        ("1024", "^metadata_csum,^64bit,uninit_bg,^orphan_file"),
+        ("4096", "^metadata_csum,^64bit,^uninit_bg,orphan_file"),
     ] {
         growth_round_trip(block_size, features);
     }
@@ -491,10 +493,13 @@ fn fault_device(
 /// e2fsck. Also compares already-grown I/O with an ordinary mount.
 #[test]
 fn growth_recovers_commit_checkpoint_and_flush_interruptions() {
-    for features in ["metadata_csum,64bit", "^metadata_csum,^64bit,^uninit_bg"] {
+    for features in [
+        "metadata_csum,64bit,orphan_file",
+        "^metadata_csum,^64bit,^uninit_bg,^orphan_file",
+    ] {
         interrupted_growth_round_trip(features, false);
     }
-    interrupted_growth_round_trip("metadata_csum,64bit", true);
+    interrupted_growth_round_trip("metadata_csum,64bit,orphan_file", true);
 }
 
 /// Exercises the same durable growth/recovery contract with `features` selecting

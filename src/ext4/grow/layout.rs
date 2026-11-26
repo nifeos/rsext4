@@ -78,10 +78,14 @@ impl GrowthLayout {
         }
         // Features that ordinary mounting can ignore are not necessarily safe
         // to grow: they may own backup metadata or require another resize path.
+        // The orphan file is an ordinary inode whose block checksums do not
+        // depend on the group count, so growth leaves it as it is; a mount that
+        // may write, which growth needs, already refuses one that holds orphans.
         let supported_compat = Ext4Superblock::EXT4_FEATURE_COMPAT_HAS_JOURNAL
             | Ext4Superblock::EXT4_FEATURE_COMPAT_EXT_ATTR
             | Ext4Superblock::EXT4_FEATURE_COMPAT_RESIZE_INODE
-            | Ext4Superblock::EXT4_FEATURE_COMPAT_DIR_INDEX;
+            | Ext4Superblock::EXT4_FEATURE_COMPAT_DIR_INDEX
+            | Ext4Superblock::EXT4_FEATURE_COMPAT_ORPHAN_FILE;
         if !sb.has_journal()
             || !device.is_use_journal()
             || sb.s_state & Ext4Superblock::EXT4_ERROR_FS != 0
