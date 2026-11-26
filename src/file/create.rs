@@ -151,6 +151,13 @@ pub(crate) fn create_inode_at<B: BlockIo>(
     payload: CreateInodePayload<'_>,
     file_type: u8,
 ) -> Ext4Result<Ext4Inode> {
+    // A symlink target and its terminating zero fit in one block, as in Linux.
+    if let CreateInodePayload::Data(target) = payload
+        && request.mode & Ext4Inode::S_IFMT == Ext4Inode::S_IFLNK
+        && target.len() >= fs.block_size()
+    {
+        return Err(Ext4Error::invalid_input().with_operation("symlink:target_too_long"));
+    }
     let counters_before = fs.group_counter_snapshot();
     fs.with_metadata_transaction(device, CREATE_TRANSACTION_CREDITS, |fs, device| {
         let created = create_inode_at_inner(device, fs, request, payload, file_type)?;
