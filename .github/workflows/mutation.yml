@@ -11,9 +11,11 @@ jobs:
   mutation:
     uses: partsfoundry/crate-workflows/.github/workflows/mutation.yml@d4cebb418a29be33a71ba0b4506ccf4ec0092d8e
     with:
-      # The template's 200 assumes about 15 seconds a mutant. Here a mutant takes about 43: a
-      # 31-second rebuild of the crate and its tests, then the tests, and a mutant that makes a
-      # loop endless runs to cargo-mutants' 300-second timeout. Two hundred filled the 60-minute
-      # job; a hundred take about 40 minutes, with room for several timeouts.
-      mutants-per-shard: 100
+      # The template's 200 assumes about 15 seconds a mutant. Here a mutant takes about 32
+      # seconds with two jobs: a 31-second rebuild of the crate and its tests, then the tests,
+      # and a mutant that makes a loop endless runs to cargo-mutants' 300-second timeout. A
+      # hundred sat right at the 60-minute job timeout (run 45893848454, 2026-11-26, cancelled
+      # 34 of its 116 shards); fifty take about 30 minutes, with room for several timeouts. At
+      # fifty, 11,553 mutants make 232 shards, inside the 256 a matrix holds.
+      mutants-per-shard: 50
       max-parallel: 8
