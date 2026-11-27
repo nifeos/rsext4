@@ -68,7 +68,7 @@ These are not meant for upstream.
 
 | files | why |
 |---|---|
-| `Cargo.toml` | the workspace-inherited `edition`, `spinning_top` and `thiserror` keys are resolved to the literal values of the tgoskits workspace, so the crate builds outside it; the version is `0.10.0-partsfoundry.1`, a pre-release that cannot collide with an upstream release; `rust-version` is set to 1.95, the oldest Rust that builds upstream's code; `repository` names this repository, and `documentation` is dropped |
+| `Cargo.toml` | the workspace-inherited `edition` and `thiserror` keys are resolved to the literal values of the tgoskits workspace, so the crate builds outside it; `spinning_top` is 0.4, where the workspace has 0.3, to keep the dependency current; the version is `0.10.0-partsfoundry.1`, a pre-release that cannot collide with an upstream release; `rust-version` is set to 1.95, the oldest Rust that builds upstream's code; `repository` names this repository, and `documentation` is dropped |
 | `#[cfg(test)]` lines in `src/` and `#![cfg(not(miri))]` in `tests/` | every test module but those of `crc32c` is built only outside Miri: they reach no unsafe code, and their file system images take minutes per test under Miri, so the whole suite would run for many hours |
 | `falsifications/` (all files), the `Falsification:` lines of the `verification.rs` files, and a comment of `src/extents_tree/verification.rs` | a patch per Kani harness that breaks the property it proves, which the shared proofs workflow applies to check that the harness then fails |
 | `tests/clean_unmount_power_cut.rs` | added: cuts power at each write of a clean unmount and checks that RECOVER is never cleared over a journal that still holds a transaction |

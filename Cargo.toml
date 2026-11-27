@@ -12,7 +12,7 @@ license = "Apache-2.0"
 
 [dependencies]
 bitflags = "2.10"
-spinning_top = { version = "0.3", default-features = false }
+spinning_top = { version = "0.4", default-features = false }
 thiserror = { version = "2", default-features = false }
 
 [features]
