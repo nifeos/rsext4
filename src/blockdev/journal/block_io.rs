@@ -159,7 +159,8 @@ impl<B: BlockIo> Jbd2Dev<B> {
     }
 
     /// Returns the cached block buffer mutably for low-level state tests.
-    #[cfg(all(test, not(miri)))]
+    #[cfg(test)]
+    #[cfg(not(miri))]
     pub(crate) fn buffer_mut(&mut self) -> &mut [u8] {
         self.inner.buffer_mut()
     }

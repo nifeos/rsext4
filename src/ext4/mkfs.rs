@@ -769,7 +769,8 @@ fn initialize_other_groups_bitmaps<B: BlockIo>(
     Ok(())
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
 
@@ -862,6 +863,20 @@ mod tests {
             group.group_inode_table_start_block + u64::from(layout.inode_table_blocks)
                 <= total_blocks
         );
+    }
+
+    #[test]
+    fn superblock_carries_block_counts_past_32_bits() {
+        let total_blocks = (1 << 32) + 3;
+        let mut layout = compute_fs_layout(DEFAULT_INODE_SIZE, total_blocks, BLOCK_SIZE_U32)
+            .expect("a 64-bit block count should have a representable layout");
+        // Group 0 cannot hold the descriptor table of a filesystem large enough to reserve more
+        // than 2^32 blocks, so the layout is given such a reserve directly.
+        layout.reserved_blocks = (5 << 32) + 7;
+        let superblock = build_superblock(total_blocks, &layout);
+
+        assert_eq!(superblock.blocks_count(), total_blocks);
+        assert_eq!(superblock.reserved_blocks_count(), (5 << 32) + 7);
     }
 
     #[test]

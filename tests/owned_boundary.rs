@@ -115,7 +115,7 @@ fn context() -> MutationContext {
 }
 
 /// Follows `next_cursor` from the start of `directory` until the end and
-/// returns every name with its inode number.
+/// returns every name with its inode number, failing if a cursor repeats.
 fn enumerate_with_reader(
     filesystem: &mut OwnedFilesystem,
     directory: InodeNumber,
@@ -126,8 +126,14 @@ fn enumerate_with_reader(
         .expect("open directory reader");
     assert_eq!(reader.directory(), directory);
     let mut cursor = DirectoryCursor::Start;
+    let mut seen_cursors = Vec::new();
     let mut names = Vec::new();
     loop {
+        assert!(
+            !seen_cursors.contains(&cursor),
+            "the reader returned to cursor {cursor:?}"
+        );
+        seen_cursors.push(cursor);
         let entries = filesystem
             .read_directory_with_reader(&mut reader, cursor, batch)
             .expect("read directory batch");

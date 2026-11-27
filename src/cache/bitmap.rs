@@ -302,7 +302,8 @@ pub struct CacheStats {
     pub max_entries: usize,
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
     use crate::{config::BLOCK_SIZE, disknode::Ext4Timestamp};

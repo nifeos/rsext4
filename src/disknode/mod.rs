@@ -16,9 +16,17 @@ pub use time::{Ext4TimeSpec, Ext4Timestamp};
 
 #[cfg(kani)]
 mod verification;
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inode_flag_groups_hold_their_on_disk_values() {
+        assert_eq!(Ext4Inode::EXT4_FL_USER_MODIFIABLE, 0x2003_00F8);
+        assert_eq!(Ext4Inode::EXT4_FL_USER_VISIBLE, 0x306F_1FF8);
+        assert_eq!(Ext4Inode::EXT4_FL_INHERITED, 0x2001_00C8);
+    }
 
     #[test]
     fn uid_gid_roundtrip_keeps_high_bits() {

@@ -476,5 +476,6 @@ mod commit_format;
 mod credits;
 mod edit_rollback;
 mod handles;
+mod queue_state;
 mod recovery;
 mod revoke;

@@ -121,7 +121,8 @@ impl<'a> InodeBitmap<'a> {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use alloc::vec;
 
@@ -136,5 +137,21 @@ mod tests {
 
         assert_eq!(bitmap.find_first_free(), Some(8));
         assert_eq!(bitmap.count_allocated(), 8);
+    }
+
+    #[test]
+    fn find_first_free_tests_each_bit_from_the_lowest() {
+        let mut data = vec![0b0000_0011u8, 0];
+        let bitmap = InodeBitmap::new(&mut data, 16);
+
+        assert_eq!(bitmap.find_first_free(), Some(2));
+    }
+
+    #[test]
+    fn find_first_free_ignores_padding_bits_past_the_group() {
+        let mut data = vec![0b0000_1111u8];
+        let bitmap = InodeBitmap::new(&mut data, 4);
+
+        assert_eq!(bitmap.find_first_free(), None);
     }
 }

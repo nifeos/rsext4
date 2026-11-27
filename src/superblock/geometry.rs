@@ -15,8 +15,15 @@ impl Ext4Superblock {
     }
 
     /// Returns the filesystem block size in bytes.
+    ///
+    /// `s_log_block_size` is read from disk unchecked. A value of 54 or more encodes a block size
+    /// that does not fit in 64 bits, and for those this returns 0, which `checked_block_size`
+    /// and `validate_geometry` refuse.
     pub fn block_size(&self) -> u64 {
-        1024 << self.s_log_block_size
+        match self.s_log_block_size {
+            log @ 0..=53 => 1024 << log,
+            _ => 0,
+        }
     }
 
     /// Returns a checked filesystem block size supported by this core.
@@ -163,7 +170,7 @@ impl Ext4Superblock {
 
     /// Returns how many group descriptors fit in one block.
     pub fn descs_per_block(&self) -> u32 {
-        let block_size = self.block_size() as u32;
+        let block_size = u32::try_from(self.block_size()).unwrap_or(0);
         let desc_size = self.get_desc_size() as u32;
         block_size.checked_div(desc_size).unwrap_or(0)
     }
@@ -177,18 +184,22 @@ impl Ext4Superblock {
     }
 
     /// Returns the inode table size in blocks per group.
+    ///
+    /// The fields are read from disk unchecked, so the product is taken in 64 bits. A block size
+    /// that does not fit in 32 bits answers 0, and a table too large for 32 bits answers
+    /// `u32::MAX`; `validate_geometry` refuses both superblocks.
     pub fn inode_table_blocks(&self) -> u32 {
-        let block_size = self.block_size() as u32;
-        let inode_size = u32::from(if self.s_inode_size == 0 {
+        let block_size = u64::from(u32::try_from(self.block_size()).unwrap_or(0));
+        let inode_size = u64::from(if self.s_inode_size == 0 {
             GOOD_OLD_INODE_SIZE
         } else {
             self.s_inode_size
         });
-        let inodes_per_group = self.s_inodes_per_group;
+        let inodes_per_group = u64::from(self.s_inodes_per_group);
         if block_size == 0 {
             0
         } else {
-            (inodes_per_group * inode_size).div_ceil(block_size)
+            u32::try_from((inodes_per_group * inode_size).div_ceil(block_size)).unwrap_or(u32::MAX)
         }
     }
 
@@ -211,7 +222,8 @@ impl Ext4Superblock {
     }
 }
 
-#[cfg(all(test, not(miri)))]
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
 
@@ -301,5 +313,77 @@ mod tests {
                 .expect_err("64-bit descriptors must use a supported power-of-two size");
             assert_eq!(error.kind(), crate::Ext4ErrorKind::BadSuperblock);
         }
+    }
+
+    /// A superblock read from disk whose only nonzero field is `s_log_block_size` (at byte 24)
+    /// must answer every geometry helper without panicking, and fail validation.
+    #[test]
+    fn geometry_helpers_answer_a_block_size_log_too_large_for_64_bits() {
+        use crate::endian::DiskFormat;
+
+        for log in [54u32, 63, 64, u32::MAX] {
+            let mut bytes = [0u8; 1024];
+            bytes[24..28].copy_from_slice(&log.to_le_bytes());
+            let sb = Ext4Superblock::from_disk_bytes(&bytes);
+            assert_eq!(sb.s_log_block_size, log);
+
+            assert_eq!(sb.block_size(), 0, "log {log}");
+            assert_eq!(sb.descs_per_block(), 0, "log {log}");
+            assert_eq!(sb.inode_table_blocks(), 0, "log {log}");
+            assert!(sb.checked_block_size().is_err(), "log {log}");
+            assert!(sb.validate_geometry().is_err(), "log {log}");
+        }
+    }
+
+    #[test]
+    fn block_size_holds_every_log_that_fits_in_64_bits() {
+        let mut sb = valid_geometry(2, 0);
+        for log in 0..=53u32 {
+            sb.s_log_block_size = log;
+            assert_eq!(sb.block_size(), 1024u64 << log, "log {log}");
+        }
+        sb.s_log_block_size = 53;
+        assert_eq!(sb.block_size(), 1 << 63);
+    }
+
+    #[test]
+    fn descriptors_per_block_needs_a_block_size_that_fits_in_32_bits() {
+        let mut sb = valid_geometry(2, 0);
+        assert_eq!(sb.descs_per_block(), 4096 / u32::from(GROUP_DESC_SIZE_OLD));
+
+        sb.s_log_block_size = 21;
+        assert_eq!(
+            sb.descs_per_block(),
+            (1 << 31) / u32::from(GROUP_DESC_SIZE_OLD)
+        );
+        sb.s_log_block_size = 22;
+        assert_eq!(sb.descs_per_block(), 0);
+        sb.s_log_block_size = 53;
+        assert_eq!(sb.descs_per_block(), 0);
+    }
+
+    #[test]
+    fn inode_table_blocks_takes_the_product_in_64_bits() {
+        let mut sb = valid_geometry(2, 0);
+        assert_eq!(sb.inode_table_blocks(), 1024 * 256 / 4096);
+
+        sb.s_inodes_per_group = u32::MAX;
+        sb.s_inode_size = 1024;
+        assert_eq!(sb.inode_table_blocks(), 1 << 30);
+
+        sb.s_log_block_size = 0;
+        sb.s_inode_size = 2048;
+        assert_eq!(sb.inode_table_blocks(), u32::MAX);
+
+        sb.s_inode_size = 0;
+        sb.s_inodes_per_group = 9;
+        assert_eq!(
+            sb.inode_table_blocks(),
+            2,
+            "a zero inode size reads as 128 bytes"
+        );
+
+        sb.s_log_block_size = 22;
+        assert_eq!(sb.inode_table_blocks(), 0);
     }
 }

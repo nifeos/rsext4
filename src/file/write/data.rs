@@ -97,3 +97,7 @@ pub(super) fn existing_full_block_run(
     }
     Some((start_phys, run_len))
 }
+
+#[cfg(test)]
+#[cfg(not(miri))]
+mod tests;

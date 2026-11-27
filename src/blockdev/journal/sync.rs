@@ -200,7 +200,8 @@ impl<B: BlockIo> Jbd2Dev<B> {
         Ok(checkpointed)
     }
 
-    #[cfg(all(test, not(miri)))]
+    #[cfg(test)]
+    #[cfg(not(miri))]
     pub(super) fn checkpoint_pending_transactions(&mut self) -> Ext4Result<bool> {
         self.checkpoint_transactions(1)
     }
