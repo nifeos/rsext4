@@ -2,5 +2,5 @@
 # standalone (helpers/standalone.py in partsfoundry/crate-workflows) reads this file, holds the crate to
 # upstream's license field and lint table at this commit, and runs every other check.
 repository = "https://github.com/rcore-os/tgoskits"
-commit = "bd0153f7d336e3106ea6fd78b3a7ef2fe256d906"
+commit = "2c1eff6c7fdca948943b50c796b2c0d54430a028"
 path = "fs/rsext4"

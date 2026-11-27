@@ -1,7 +1,7 @@
 use super::{mkfs::write_superblock, *};
 
 impl Ext4FileSystem {
-    fn clean_state(superblock: &Ext4Superblock) -> u16 {
+    pub(crate) fn clean_state(superblock: &Ext4Superblock) -> u16 {
         (superblock.s_state & Ext4Superblock::EXT4_ERROR_FS) | Ext4Superblock::EXT4_VALID_FS
     }
 
@@ -16,12 +16,22 @@ impl Ext4FileSystem {
         block_dev: &mut Jbd2Dev<B>,
         _observer: &mut O,
     ) -> Ext4Result<()> {
+        self.stage_sync_metadata(block_dev)?;
+        block_dev.commit_for_filesystem_sync()?;
+        Ok(())
+    }
+
+    /// Publishes cached metadata before sealing a durability target.
+    /// Journal commit/checkpoint I/O belongs to the separate commit owner.
+    pub(crate) fn stage_sync_metadata<B: BlockIo>(
+        &mut self,
+        block_dev: &mut Jbd2Dev<B>,
+    ) -> Ext4Result<()> {
         self.datablock_cache.flush_all(block_dev)?;
         self.inodetable_cache.flush_all(block_dev)?;
         self.bitmap_cache.flush_all(block_dev)?;
         self.sync_group_descriptors(block_dev)?;
         self.sync_superblock_if_dirty(block_dev)?;
-        block_dev.commit_for_filesystem_sync()?;
         Ok(())
     }
 
@@ -224,12 +234,7 @@ pub(crate) fn write_clean_superblock<B: BlockIo>(
     device: &mut Jbd2Dev<B>,
     superblock: &Ext4Superblock,
 ) -> Ext4Result<()> {
-    // The journal must own no transaction, handle or reservation, so
-    // RECOVER is cleared only after the durable journal tail is empty. An
-    // unpublished block edit is refused by the uncached read and the durable
-    // write below.
-    device.ensure_not_aborted("unmount:journal_aborted")?;
-    device.ensure_journal_state_reinstallable()?;
+    device.ensure_clean_publication_ready()?;
     let block_size = device.block_size() as usize;
     let offset = Ext4Superblock::SUPERBLOCK_OFFSET as usize;
     let block = AbsoluteBN::new((offset / block_size) as u64);

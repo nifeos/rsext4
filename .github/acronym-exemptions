@@ -33,6 +33,7 @@ tests/extent_restart.rs EOF fix 2b, as upstream pull request 2829 writes it
 tests/file_operations.rs AOF upstream code, unchanged
 tests/metadata_lifecycle.rs IDs upstream code, unchanged
 src/blockdev/cached_device.rs RMW upstream code, unchanged
+src/blockdev/journal/detached.rs TID upstream code, unchanged
 tests/extent_restart.rs JBD2 fix 2b, as upstream pull request 2829 writes it
 src/cache/bitmap.rs LRU upstream code, unchanged
 src/checksum/dirblock.rs HTree upstream code, unchanged
@@ -46,6 +47,7 @@ src/crc32c/x86_64.rs FPU upstream code, unchanged
 src/disknode/inode.rs UID upstream code, unchanged
 src/disknode/inode.rs GID upstream code, unchanged
 src/disknode/inode.rs FIFO upstream code, unchanged
-src/ext4/owned.rs VFS upstream code, unchanged
-src/ext4/owned.rs ABI upstream code, unchanged
+src/ext4/grow/step.rs DMA upstream code, unchanged
+src/file/delete.rs VFS upstream code, unchanged
+src/ext4/owned/directory.rs ABI upstream code, unchanged
 src/file/xattr_extent.rs FIEMAP upstream code, unchanged

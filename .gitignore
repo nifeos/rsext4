@@ -10,3 +10,5 @@ other
 AGENTS.md
 CLAUDE.md
 .gitnexus
+# The fork tracks its AGENTS.md, which upstream ignores.
+!/AGENTS.md

@@ -1,0 +1,183 @@
+# Steps 1 and 2 of "Merging upstream dev" in AGENTS.md, every week: split fs/rsext4 out of
+# rcore-os/tgoskits dev and merge it into main. A clean merge becomes a draft pull request on its own
+# branch, for a person or an agent to finish with steps 3 to 6 (the records and the gates); a merge
+# that conflicts becomes one issue naming the files, and nothing is pushed. The workflow never
+# resolves a conflict and never pushes to tgoskits, which it only reads.
+
+name: upstream sync
+
+on:
+  schedule:
+    # Thursdays 06:00 UTC, away from the weekly checks and the template's Wednesday Kani bump.
+    - cron: '0 6 * * 4'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sync:
+    name: split and merge upstream dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      # The conflict issue is opened with github.token; nothing needs to run on it.
+      issues: write
+    steps:
+      # A push or pull request made with github.token triggers no workflows, so the draft pull
+      # request would never run its checks. The app's token does. There is no fallback to
+      # github.token: a missing secret is a red job that names what to create.
+      - name: the app credentials exist
+        run: |
+          missing=""
+          [ -n "$APP_ID" ] || missing="$missing NIFE_SMELTER_APP_ID"
+          [ -n "$APP_KEY" ] || missing="$missing NIFE_SMELTER_PRIVATE_KEY"
+          if [ -n "$missing" ]; then
+            echo "missing secret(s):$missing"
+            echo "Create them as organization secrets (the app ID and private key), visible to this"
+            echo "repository. The app needs contents and pull requests write here."
+            exit 1
+          fi
+        env:
+          APP_ID: ${{ secrets.NIFE_SMELTER_APP_ID }}
+          APP_KEY: ${{ secrets.NIFE_SMELTER_PRIVATE_KEY }}
+      - name: mint an installation token
+        id: app
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          app-id: ${{ secrets.NIFE_SMELTER_APP_ID }}
+          private-key: ${{ secrets.NIFE_SMELTER_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          token: ${{ steps.app.outputs.token }}
+          fetch-depth: 0
+      - name: read the tracked upstream commit
+        id: tracked
+        run: |
+          set -e
+          read_key() { sed -n "s/^$1 = \"\(.*\)\"$/\1/p" .github/fork-upstream.toml; }
+          {
+            echo "repository=$(read_key repository)"
+            echo "commit=$(read_key commit)"
+            echo "path=$(read_key path)"
+          } >> "$GITHUB_OUTPUT"
+      # The whole history of dev, since the split walks every commit that touched the path. The
+      # clone takes every blob: a partial clone would fetch each blob the split reads one at a time,
+      # which runs for hours. Only the path is checked out.
+      - name: fetch upstream dev
+        env:
+          UPSTREAM: ${{ steps.tracked.outputs.repository }}
+          UPSTREAM_PATH: ${{ steps.tracked.outputs.path }}
+        run: |
+          set -e
+          git clone --quiet --sparse --single-branch --branch dev \
+            "$UPSTREAM" "$RUNNER_TEMP/upstream"
+          git -C "$RUNNER_TEMP/upstream" sparse-checkout set "$UPSTREAM_PATH"
+          echo "UPSTREAM_DEV=$(git -C "$RUNNER_TEMP/upstream" rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: anything new under the path
+        id: plan
+        env:
+          TRACKED: ${{ steps.tracked.outputs.commit }}
+          UPSTREAM_PATH: ${{ steps.tracked.outputs.path }}
+        run: |
+          set -e
+          short=$(printf '%s' "$UPSTREAM_DEV" | cut -c1-12)
+          echo "branch=upstream-sync/$short" >> "$GITHUB_OUTPUT"
+          echo "short=$short" >> "$GITHUB_OUTPUT"
+          if git -C "$RUNNER_TEMP/upstream" diff --quiet "$TRACKED" "$UPSTREAM_DEV" -- "$UPSTREAM_PATH"; then
+            echo "Nothing under $UPSTREAM_PATH changed between $TRACKED and dev ($UPSTREAM_DEV)."
+            echo "merge=false" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --heads origin "upstream-sync/$short" > /dev/null; then
+            echo "Branch upstream-sync/$short already exists; this dev commit was proposed before."
+            echo "merge=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "merge=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: split the path
+        if: steps.plan.outputs.merge == 'true'
+        env:
+          UPSTREAM_PATH: ${{ steps.tracked.outputs.path }}
+        run: |
+          set -e
+          cd "$RUNNER_TEMP/upstream"
+          git subtree split --prefix="$UPSTREAM_PATH" HEAD -b rsext4-upstream
+          # The split must reproduce the fork's own history, from its oldest commit.
+          git merge-base --is-ancestor 359e66d0136c5b6acf44f0f3aba070b5a3457998 rsext4-upstream
+      - name: merge
+        id: merge
+        if: steps.plan.outputs.merge == 'true'
+        env:
+          TRACKED: ${{ steps.tracked.outputs.commit }}
+          UPSTREAM_PATH: ${{ steps.tracked.outputs.path }}
+          BRANCH: ${{ steps.plan.outputs.branch }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          set -e
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+          git fetch --quiet "$RUNNER_TEMP/upstream" rsext4-upstream
+          # The point where the fork last merged upstream must be the split of the tracked commit.
+          base=$(git merge-base HEAD FETCH_HEAD)
+          if [ "$(git rev-parse "$base^{tree}")" != "$(git -C "$RUNNER_TEMP/upstream" rev-parse "$TRACKED:$UPSTREAM_PATH")" ]; then
+            echo "The merge base $base does not hold $UPSTREAM_PATH as of the tracked commit $TRACKED."
+            exit 1
+          fi
+          git switch -c "$BRANCH"
+          if git merge --no-ff FETCH_HEAD -m "Merge upstream tgoskits dev at $UPSTREAM_DEV ($UPSTREAM_PATH)"; then
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only --diff-filter=U > "$RUNNER_TEMP/conflicts"
+            git merge --abort
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+          fi
+      # One branch per upstream commit, never force-pushed: a lane that finishes the pull request
+      # pushes its own commits there.
+      - name: open the draft pull request
+        if: steps.merge.outputs.clean == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BRANCH: ${{ steps.plan.outputs.branch }}
+          SHORT: ${{ steps.plan.outputs.short }}
+          TRACKED: ${{ steps.tracked.outputs.commit }}
+        run: |
+          set -e
+          git push origin "$BRANCH"
+          body="$(printf '%s\n' \
+            "Automated by \`.github/workflows/upstream-sync.yml\`: merges the split of \`fs/rsext4\` at tgoskits \`dev\` $UPSTREAM_DEV, after $TRACKED. The merge had no conflicts." \
+            "" \
+            "Draft until steps 3 to 6 of \"Merging upstream dev\" in AGENTS.md are done on this branch: \`.github/fork-upstream.toml\`, CHANGES.md and the exemption files updated, and the gates run.")"
+          gh pr create --draft --head "$BRANCH" --base main \
+            --title "Merge upstream tgoskits dev at $SHORT" --body "$body"
+      - name: open or update the conflict issue
+        if: steps.merge.outputs.clean == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHORT: ${{ steps.plan.outputs.short }}
+        run: |
+          set -e
+          title="Upstream tgoskits dev at $SHORT needs a hand merge"
+          # The backticks below are Markdown for the issue body, not command substitution.
+          # shellcheck disable=SC2016
+          body="$(printf '%s\n' \
+            "Automated by \`.github/workflows/upstream-sync.yml\`: merging the split of tgoskits \`dev\` $UPSTREAM_DEV into main conflicts in these files:" \
+            "" \
+            "$(sed 's/.*/- `&`/' "$RUNNER_TEMP/conflicts")" \
+            "" \
+            "Follow \"Merging upstream dev\" in AGENTS.md by hand; the conflict rule is step 3. Close this issue when the merge pull request is open.")"
+          if existing="$(gh issue list --state open --search "in:title \"needs a hand merge\"" --json number --jq '.[0].number')" && [ -n "$existing" ]; then
+            gh issue edit "$existing" --title "$title" --body "$body"
+            echo "updated issue $existing"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

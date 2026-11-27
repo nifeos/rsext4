@@ -3,15 +3,15 @@
 [![check](https://github.com/partsfoundry/rsext4/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/partsfoundry/rsext4/actions/workflows/ci.yml?query=branch%3Amain)
 [![proofs](https://github.com/partsfoundry/rsext4/actions/workflows/proofs.yml/badge.svg?branch=main)](https://github.com/partsfoundry/rsext4/actions/workflows/proofs.yml?query=branch%3Amain)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/partsfoundry/rsext4#license)
-[![minimum Rust version](https://img.shields.io/badge/rust-1.94%2B-blue.svg)](https://github.com/partsfoundry/rsext4/blob/main/Cargo.toml)
+[![minimum Rust version](https://img.shields.io/badge/rust-1.95%2B-blue.svg)](https://github.com/partsfoundry/rsext4/blob/main/Cargo.toml)
 
 A `no_std` ext4 file system in Rust: mount, read, write, format and journal replay over any block
 device that implements `BlockIo`.
 
 This repository is a fork of `rsext4`, which lives in
 [rcore-os/tgoskits](https://github.com/rcore-os/tgoskits) under `fs/rsext4`. It tracks that
-directory, starting from the published 0.9.2 release, and carries fixes upstream has not released
-yet. Each fix goes upstream as an issue and a pull request of its own, written to upstream's
+directory: it started from the published 0.9.2 release, merges upstream's `dev` branch as a
+routine step, and carries fixes upstream has not released yet. Each fix goes upstream as an issue and a pull request of its own, written to upstream's
 conventions, and the fork stops carrying it once upstream releases it.
 [CHANGES.md](CHANGES.md) lists every file the fork changes, why, and where each fix stands
 upstream. The history before the fork is upstream's own, split out of tgoskits.
@@ -148,15 +148,15 @@ exits 1. Each patch's opening lines name the check it expects to fail.
 
 ## Minimum Rust version
 
-Rust 1.94. To check it, run:
+Rust 1.95. To check it, run:
 
 ```sh
-rustup toolchain install 1.94 --profile minimal
-rustup target add --toolchain 1.94 aarch64-unknown-none-softfloat riscv64imac-unknown-none-elf x86_64-unknown-none
-cargo +1.94 test --all-features
+rustup toolchain install 1.95 --profile minimal
+rustup target add --toolchain 1.95 aarch64-unknown-none-softfloat riscv64imac-unknown-none-elf x86_64-unknown-none
+cargo +1.95 test --all-features
 ```
 
-then the bare-metal builds above with `+1.94`.
+then the bare-metal builds above with `+1.95`.
 
 ## License
 
