@@ -3,6 +3,11 @@
 use super::*;
 
 /// Read the whole file at `path`.
+///
+/// The buffer is as large as the file's recorded size, holes included. A size
+/// that does not fit in memory is refused with `FileTooLarge` or `NoMemory`
+/// before any block is read; to bound the memory a read takes, read a range
+/// with [`read_inode_data_into`] instead.
 pub fn read_file<B: BlockIo>(
     device: &mut Jbd2Dev<B>,
     fs: &mut Ext4FileSystem,
@@ -161,7 +166,7 @@ fn read_file_follow<B: BlockIo>(
         });
     }
 
-    let size = inode.size() as usize;
+    let size = usize::try_from(inode.size()).map_err(|_| Ext4Error::file_too_large())?;
     if size == 0 {
         fs.touch_inode_atime_if_needed(device, inode_num)?;
         return Ok(Vec::new());
@@ -170,7 +175,18 @@ fn read_file_follow<B: BlockIo>(
     let block_bytes = fs.block_size();
     let total_blocks = size.div_ceil(block_bytes);
 
-    let mut buf = Vec::with_capacity(size);
+    // The recorded size comes from the image, and a sparse file may be larger
+    // than the image, so no format bound applies. Reserve every block the
+    // loops below append, fallibly, before reading any of them: a size the
+    // allocator cannot satisfy is an error here, and no later append can
+    // reallocate.
+    let buffer_bytes = total_blocks
+        .checked_mul(block_bytes)
+        .filter(|&bytes| bytes <= isize::MAX as usize)
+        .ok_or_else(|| Ext4Error::file_too_large().with_operation("read_file:buffer"))?;
+    let mut buf = Vec::new();
+    buf.try_reserve_exact(buffer_bytes)
+        .map_err(|_| Ext4Error::no_memory().with_operation("read_file:buffer"))?;
 
     if inode.uses_extents() {
         let blocks = resolve_inode_blocks(fs, device, inode_num, &mut inode)?;

@@ -15,7 +15,7 @@ src/ext4/owned/shutdown.rs # 8%, upstream code, unchanged
 src/ext4/owned/write/mod.rs # 77%, upstream code, unchanged
 src/ext4/owned/writeback.rs # 63%, upstream code, unchanged
 src/file/io/ranges.rs # 79%, upstream code, unchanged
-src/file/io/read.rs # 78%, upstream code, unchanged
+src/file/io/read.rs # 78%, upstream code plus the fork's fixes 17 and 19, which their tests cover
 src/file/io/resize.rs # 83%, upstream code plus the fork's fixes 2b and 2c, which their tests cover
 src/file/read_plan/source.rs # 76%, upstream code, unchanged
 src/file/write/legacy.rs # 82%, upstream code, unchanged

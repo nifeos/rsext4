@@ -1512,6 +1512,50 @@ fn symlink_whose_recorded_size_passes_one_block_is_refused_before_reading() {
 }
 
 #[test]
+fn read_file_refuses_a_recorded_size_it_cannot_reserve_and_reads_a_sparse_tail() {
+    let device = TestBlockDevice::new(100 * 1024 * 1024);
+    let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, device, true);
+
+    mkfs(&mut jbd2_dev).expect("mkfs failed");
+    let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("mount failed");
+    mkfile(&mut jbd2_dev, &mut fs, "/sized", Some(b"hello"), None).expect("file creation failed");
+    let (file, _) = dir::get_inode_with_num(&mut fs, &mut jbd2_dev, "/sized")
+        .unwrap()
+        .expect("file exists");
+
+    // Past the address space, the buffer's size is refused before the
+    // allocator is asked; below it, no allocator holds four exbibytes, so the
+    // fallible reservation fails. Either way the call returns an error.
+    let no_memory = if cfg!(target_pointer_width = "64") {
+        Ext4ErrorKind::NoMemory
+    } else {
+        Ext4ErrorKind::FileTooLarge
+    };
+    for (recorded_size, expected) in [
+        (u64::MAX, Ext4ErrorKind::FileTooLarge),
+        (1 << 63, Ext4ErrorKind::FileTooLarge),
+        (1 << 62, no_memory),
+    ] {
+        fs.modify_inode(&mut jbd2_dev, file, |inode| inode.set_size(recorded_size))
+            .unwrap();
+        let refused = read_file(&mut jbd2_dev, &mut fs, "/sized")
+            .expect_err("no buffer of this size can be reserved");
+        assert_eq!(refused.kind(), expected, "recorded size {recorded_size}");
+    }
+
+    // A recorded size past the last mapped block is a hole, and reads as zeros.
+    let sparse_size = 3 * BLOCK_SIZE + 7;
+    fs.modify_inode(&mut jbd2_dev, file, |inode| {
+        inode.set_size(sparse_size as u64)
+    })
+    .unwrap();
+    let contents = read_file(&mut jbd2_dev, &mut fs, "/sized").expect("read sparse file");
+    assert_eq!(contents.len(), sparse_size);
+    assert_eq!(&contents[..5], b"hello");
+    assert!(contents[5..].iter().all(|&byte| byte == 0));
+}
+
+#[test]
 fn test_basic_mount_mkfs() {
     let device = TestBlockDevice::new(100 * 1024 * 1024); // 100MB
     let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, device, true);
