@@ -3,7 +3,15 @@
 # A line without a reason is refused, and a line naming a survivor that no longer exists is
 # refused too, so this list can only shrink by a diff that says why.
 src/blockgroup_description/desc.rs:149 # the high half is shifted past the 32 bits the low half fills, so the two never share a set bit and `^` composes them as `|` does
-src/extents_tree/remove.rs:176 # the high half is shifted past the 32 bits the low half fills, so the two never share a set bit and `^` composes them as `|` does
+src/extents_tree/remove.rs:54 # validation refuses an extent whose logical end overflows, so a nonzero length ends past its start, and `cur_lbn == start` has already matched the branch above; `<=` adds no case
+src/extents_tree/remove.rs:120 # the root is validated and every child is parsed, and both refuse an index with no entries, so the loop is entered with `idx_pos` below the length and is only continued after the same bound is checked; `<=` is never evaluated at the length
+src/extents_tree/remove.rs:152 # `need >= 0` holds for every unsigned count, so once the span is consumed the walk takes zero blocks forever whenever the tree holds data past it; the tests that remove a range in the middle of a file spin, so the mutant can only hang, and a hang is all a test of it can see
+src/extents_tree/remove.rs:176 # the high half is shifted past the 32 bits the low half fills, so the two never share a set bit and `^` composes them as `|` does; `>>` here fails kills::trimming_the_front_of_an_extent_above_32_bits_keeps_its_high_half
+src/extents_tree/remove.rs:200 # a parent reads `first_key` only from a Deleted result, and this function fills only HoleSkip and NoMoreExtent results, whose `first_key` neither the parent nor the top-level loop reads
+src/extents_tree/remove.rs:243 # validation refuses an extent whose logical end overflows, so a nonzero length ends past its start, and `cur_lbn == start` has already matched the branch above; `<=` adds no case
+src/extents_tree/remove.rs:337 # the entries are sorted by logical block right after the insert, and the two parts start at different blocks, so inserting the right part at `i` instead of `i + 1` leaves the same order
+src/extents_tree/remove.rs:395 # the high half is shifted past the 32 bits the low half fills, so the two never share a set bit and `^` composes them as `|` does
+src/extents_tree/remove.rs:536 # the high half is shifted past the 32 bits the low half fills, so the two never share a set bit and `^` composes them as `|` does; `>>` here fails kills::collapsing_a_root_frees_the_child_it_points_at
 src/dir/insert.rs:126 # `offset * rec_len` holds the walk at offset 0 once the first record has no room, so the mutant can only hang, and a hang is all a test of it can see
 src/disknode/inode_flags.rs:34 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
 src/disknode/inode_flags.rs:35 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values

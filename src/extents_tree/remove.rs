@@ -556,6 +556,8 @@ impl<'a> ExtentTree<'a> {
 mod tests {
     extern crate std;
 
+    mod kills;
+
     use alloc::{vec, vec::Vec};
     use core::cell::Cell;
 
