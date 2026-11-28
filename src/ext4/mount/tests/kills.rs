@@ -470,6 +470,13 @@ fn a_lost_and_found_that_is_not_a_directory_is_refused() {
 fn a_deleted_lost_and_found_is_recreated_only_by_a_writable_mount() {
     let mut journal = wrap(image(), true);
     let mut fs = Ext4FileSystem::mount(&mut journal).expect("mount");
+    // The walk below follows whatever entries the directory blocks hold, and
+    // on damaged blocks it need not end, so first check that lost+found reads
+    // as a sound directory.
+    assert!(matches!(
+        get_file_inode(&mut fs, &mut journal, "/lost+found/lost+found"),
+        Ok(None)
+    ));
     crate::file::delete_dir(&mut fs, &mut journal, "/lost+found").expect("delete");
     fs.umount(&mut journal).expect("umount");
     let mut bytes = journal.into_inner().bytes;
