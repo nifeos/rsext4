@@ -327,3 +327,7 @@ pub(super) fn punch_legacy_blocks<B: BlockIo>(
         )
     }
 }
+
+#[cfg(test)]
+#[cfg(not(miri))]
+mod tests;
