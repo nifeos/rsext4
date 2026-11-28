@@ -1,4 +1,4 @@
-//! Tests that pin the behaviour of the xattr store.
+//! Tests that pin the behavior of the xattr store.
 
 mod mutation_kills;
 mod persistence_kills;
