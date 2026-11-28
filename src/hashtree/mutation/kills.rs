@@ -552,7 +552,7 @@ mod mounted {
     }
 
     #[test]
-    fn the_hash_flavour_follows_the_superblock_for_signed_and_unsigned_bytes() {
+    fn the_hash_flavor_follows_the_superblock_for_signed_and_unsigned_bytes() {
         let unsigned = Ext4Superblock::EXT4_FLAGS_UNSIGNED_HASH;
         let signed = Ext4Superblock::EXT4_FLAGS_SIGNED_HASH;
         for (base, flags, effective) in [
