@@ -386,4 +386,154 @@ mod tests {
         sb.s_log_block_size = 22;
         assert_eq!(sb.inode_table_blocks(), 0);
     }
+
+    /// Returns the operation a refused geometry check names.
+    fn refusal<T: core::fmt::Debug>(result: Ext4Result<T>) -> &'static str {
+        let error = result.expect_err("the geometry must be refused");
+        assert_eq!(error.kind(), crate::Ext4ErrorKind::BadSuperblock);
+        match error.context() {
+            Some(ErrorContext::Operation { op }) => op,
+            _ => panic!("the error names its operation"),
+        }
+    }
+
+    /// A 4 KiB-block superblock with bigalloc and 8 KiB clusters, two blocks to
+    /// a cluster, and `clusters_per_group` clusters in each group.
+    fn bigalloc_geometry(clusters_per_group: u32) -> Ext4Superblock {
+        let mut sb = valid_geometry(2, 0);
+        sb.s_feature_ro_compat |= Ext4Superblock::EXT4_FEATURE_RO_COMPAT_BIGALLOC;
+        sb.s_log_cluster_size = 3;
+        sb.s_clusters_per_group = clusters_per_group;
+        sb.s_blocks_per_group = 2 * clusters_per_group;
+        sb.s_blocks_count_lo = 2 * clusters_per_group;
+        sb
+    }
+
+    #[test]
+    fn only_the_ext4_magic_is_valid() {
+        let mut sb = valid_geometry(2, 0);
+        assert!(!sb.is_valid());
+        sb.s_magic = Ext4Superblock::EXT4_SUPER_MAGIC;
+        assert!(sb.is_valid());
+    }
+
+    #[test]
+    fn a_block_size_past_4_kib_is_refused() {
+        let mut sb = valid_geometry(2, 0);
+        sb.s_log_block_size = 3;
+        assert_eq!(refusal(sb.checked_block_size()), "superblock:block_size");
+    }
+
+    #[test]
+    fn clusters_larger_than_blocks_need_bigalloc() {
+        let sb = bigalloc_geometry(16384);
+        assert_eq!(sb.checked_cluster_size().unwrap(), 8192);
+        sb.validate_geometry().unwrap();
+
+        let mut without_bigalloc = sb;
+        without_bigalloc.s_feature_ro_compat &= !Ext4Superblock::EXT4_FEATURE_RO_COMPAT_BIGALLOC;
+        assert_eq!(
+            refusal(without_bigalloc.checked_cluster_size()),
+            "superblock:cluster_size"
+        );
+    }
+
+    #[test]
+    fn a_cluster_size_shifted_out_to_zero_is_refused_even_with_bigalloc() {
+        let mut sb = bigalloc_geometry(16384);
+        sb.s_log_cluster_size = 54;
+        assert_eq!(
+            refusal(sb.checked_cluster_size()),
+            "superblock:cluster_size"
+        );
+    }
+
+    #[test]
+    fn a_group_count_needs_blocks_per_group_and_data_blocks() {
+        let mut no_blocks_per_group = valid_geometry(2, 0);
+        no_blocks_per_group.s_blocks_per_group = 0;
+        assert_eq!(
+            refusal(no_blocks_per_group.checked_block_groups_count()),
+            "superblock:block_groups"
+        );
+
+        let mut only_the_first_data_block = valid_geometry(0, 1);
+        only_the_first_data_block.s_blocks_count_lo = 1;
+        assert_eq!(
+            refusal(only_the_first_data_block.checked_block_groups_count()),
+            "superblock:block_groups"
+        );
+    }
+
+    #[test]
+    fn each_group_geometry_bound_is_refused_on_its_own() {
+        // A 4 KiB bitmap covers 32768 bits.
+        let mut cases = ::alloc::vec::Vec::new();
+        let mut sb = valid_geometry(2, 0);
+        sb.s_blocks_per_group = 0;
+        cases.push(sb);
+        let mut sb = valid_geometry(2, 0);
+        sb.s_blocks_per_group = 32776;
+        cases.push(sb);
+        let mut sb = valid_geometry(2, 0);
+        sb.s_clusters_per_group = 0;
+        cases.push(sb);
+        // With bigalloc a group may hold more blocks than bits, but not more clusters.
+        cases.push(bigalloc_geometry(32776));
+        let mut sb = valid_geometry(2, 0);
+        sb.s_inodes_per_group = 0;
+        cases.push(sb);
+        let mut sb = valid_geometry(2, 0);
+        sb.s_inodes_per_group = 32769;
+        cases.push(sb);
+        for sb in cases {
+            assert_eq!(refusal(sb.validate_geometry()), "superblock:group_geometry");
+        }
+    }
+
+    #[test]
+    fn group_geometry_accepts_counts_up_to_the_bitmap_bits() {
+        let mut sb = valid_geometry(2, 0);
+        sb.s_inodes_per_group = 32768;
+        sb.validate_geometry().unwrap();
+
+        let mut sb = valid_geometry(2, 0);
+        sb.s_blocks_per_group = 16384;
+        sb.s_clusters_per_group = 16384;
+        sb.validate_geometry().unwrap();
+    }
+
+    #[test]
+    fn an_inode_size_from_128_bytes_to_the_block_size_is_accepted() {
+        // Zero reads as the old 128-byte inode.
+        for size in [0, 128, 4096] {
+            let mut sb = valid_geometry(2, 0);
+            sb.s_inode_size = size;
+            sb.validate_geometry().unwrap();
+        }
+    }
+
+    #[test]
+    fn each_inode_size_bound_is_refused_on_its_own() {
+        // Too small, not a power of two, and larger than the block.
+        for size in [64, 384, 8192] {
+            let mut sb = valid_geometry(2, 0);
+            sb.s_inode_size = size;
+            assert_eq!(refusal(sb.validate_geometry()), "superblock:inode_size");
+        }
+    }
+
+    #[test]
+    fn a_64_bit_descriptor_size_below_the_64_bit_minimum_is_refused() {
+        let mut sb = valid_geometry(0, 1);
+        sb.s_feature_incompat |= Ext4Superblock::EXT4_FEATURE_INCOMPAT_64BIT;
+        sb.s_desc_size = 32;
+        assert_eq!(
+            refusal(sb.validate_geometry()),
+            "superblock:descriptor_size"
+        );
+        // A descriptor as large as the block still fits.
+        sb.s_desc_size = 1024;
+        sb.validate_geometry().unwrap();
+    }
 }
