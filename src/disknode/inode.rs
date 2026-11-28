@@ -550,3 +550,6 @@ impl Ext4Inode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
