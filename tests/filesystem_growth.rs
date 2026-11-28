@@ -116,6 +116,29 @@ fn command(program: &str, args: &[&str]) {
     }
 }
 
+/// Copies the image at `from` to `to`, leaving holes where `from` reads as zero.
+/// A fault cut copies a mostly sparse image dozens of times, and a plain copy
+/// writes every zero byte of it; holes read back as zero, so the copy is exact.
+fn copy_image(from: &PathBuf, to: &PathBuf) {
+    const CHUNK_BYTES: usize = 1024 * 1024;
+    let zero = vec![0; CHUNK_BYTES];
+    let mut chunk = vec![0; CHUNK_BYTES];
+    let mut source = File::open(from).unwrap();
+    let length = source.metadata().unwrap().len();
+    let mut target = File::create(to).unwrap();
+    let mut offset = 0;
+    while offset < length {
+        let count = (length - offset).min(CHUNK_BYTES as u64) as usize;
+        source.read_exact(&mut chunk[..count]).unwrap();
+        if chunk[..count] != zero[..count] {
+            target.seek(SeekFrom::Start(offset)).unwrap();
+            target.write_all(&chunk[..count]).unwrap();
+        }
+        offset += count as u64;
+    }
+    target.set_len(length).unwrap();
+}
+
 /// Opens `path` with an independent cursor and a fresh journal-enabled wrapper,
 /// ensuring no cache or journal state survives an earlier simulated failure.
 fn open(path: &PathBuf) -> Jbd2Dev<Image> {
@@ -565,7 +588,7 @@ fn interrupted_growth_round_trip(features: &str, journal_pressure: bool) {
         remaining -= count as u64;
     }
     drop(expanded);
-    std::fs::copy(&original, &baseline).unwrap();
+    copy_image(&original, &baseline);
     let (mut device, trace) = fault_device(&baseline, None);
     let filesystem = Ext4FileSystem::mount_growing(&mut device).unwrap();
     let expected_blocks = filesystem.superblock.blocks_count();
@@ -768,7 +791,7 @@ fn interrupted_growth_round_trip(features: &str, journal_pressure: bool) {
     );
     drop(operations);
     for cut in cuts {
-        std::fs::copy(&original, &attempt).unwrap();
+        copy_image(&original, &attempt);
         let (mut device, _) = fault_device(&attempt, Some(cut));
         if let Ok(filesystem) = Ext4FileSystem::mount_growing(&mut device) {
             assert!(
@@ -795,12 +818,12 @@ fn interrupted_growth_round_trip(features: &str, journal_pressure: bool) {
     }
     // Normal mount maintenance is allowed; an already grown constructor must
     // add no writes compared with the same plain mount on an identical image.
-    std::fs::copy(&baseline, &attempt).unwrap();
+    copy_image(&baseline, &attempt);
     let (mut device, normal) = fault_device(&attempt, None);
     let filesystem = Ext4FileSystem::mount(&mut device).unwrap();
     umount(filesystem, &mut device).unwrap();
     drop(device);
-    std::fs::copy(&baseline, &attempt).unwrap();
+    copy_image(&baseline, &attempt);
     let (mut device, grown) = fault_device(&attempt, None);
     let filesystem = Ext4FileSystem::mount_growing(&mut device).unwrap();
     umount(filesystem, &mut device).unwrap();

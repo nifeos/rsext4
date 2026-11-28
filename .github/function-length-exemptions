@@ -47,7 +47,7 @@ tests/extent_restart.rs build_large_legacy_fixture 129 upstream code, unchanged
 tests/extent_restart.rs assert_first_restart_commit 111 fix 2b, as upstream pull request 2829 adds it
 tests/file_operations.rs failed_legacy_truncate_bitmap_write_restores_mapping_and_accounting 118 upstream code, unchanged
 tests/filesystem_growth.rs growth_round_trip 195 upstream code, unchanged
-tests/filesystem_growth.rs interrupted_growth_round_trip 289 upstream code, unchanged
+tests/filesystem_growth.rs interrupted_growth_round_trip 289 upstream code, unchanged but for its image copies, which go through copy_image
 tests/integration_test.rs owned_mount_injects_clock_separately_from_block_io 132 upstream code, unchanged
 tests/linux_image_repro.rs linux_indexed_directory_lookup_uses_on_disk_htree_root 161 upstream code, unchanged
 tests/linux_image_repro.rs failed_linear_to_htree_conversion_restores_linear_directory 175 upstream code, unchanged
