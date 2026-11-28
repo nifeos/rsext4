@@ -14,10 +14,16 @@ jobs:
     permissions:
       contents: read
       security-events: write
-    uses: partsfoundry/crate-workflows/.github/workflows/check.yml@5cf2aab52489c44db735cce89b0fab05d784f070
+    uses: partsfoundry/crate-workflows/.github/workflows/check.yml@eef0a564a45656471bedcb93e4789f507387bc89
     with:
       # Bare-metal targets the crate builds for, space-separated; empty for a host-only crate.
       targets: aarch64-unknown-none-softfloat riscv64imac-unknown-none-elf x86_64-unknown-none
+      # The weekly upstream sync (upstream-sync.yml) opens its pull requests as this app, from
+      # upstream-sync/<commit>. They merge thousands of upstream lines and always reach
+      # mutation-diff's 20-minute cap, so mutation-diff passes them without mutating; the weekly
+      # full mutation run judges that code. A sync pull request opened by hand is not exempt.
+      mutation-diff-exempt-author: partsfoundry-smelter[bot]
+      mutation-diff-exempt-branch-prefix: upstream-sync/
   # Upstream also tests the crate with USE_MULTILEVEL_CACHE off (the `no-default-features` host
   # test profile in tgoskits), where a write reaches the device without waiting in the cache. The
   # shared `tests` job runs the default features only, so this job runs the other profile.
