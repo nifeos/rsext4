@@ -644,3 +644,7 @@ pub fn rename<B: BlockIo>(
         },
     )
 }
+
+#[cfg(test)]
+#[cfg(not(miri))]
+mod tests;
