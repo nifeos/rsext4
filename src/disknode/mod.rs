@@ -232,6 +232,29 @@ mod tests {
     }
 
     #[test]
+    fn flag_masking_reads_the_file_type_from_a_mode_with_permission_bits() {
+        let flags = Ext4Inode::EXT4_SYNC_FL
+            | Ext4Inode::EXT4_APPEND_FL
+            | Ext4Inode::EXT4_NODUMP_FL
+            | Ext4Inode::EXT4_DIRSYNC_FL;
+
+        // A regular file keeps every flag but the directory ones, and other
+        // files keep only the no-dump and no-access-time flags.
+        assert_eq!(
+            Ext4Inode::mask_flags_for_mode(Ext4Inode::S_IFREG | 0o644, flags),
+            Ext4Inode::EXT4_SYNC_FL | Ext4Inode::EXT4_APPEND_FL | Ext4Inode::EXT4_NODUMP_FL
+        );
+        assert_eq!(
+            Ext4Inode::mask_flags_for_mode(Ext4Inode::S_IFLNK | 0o777, flags),
+            Ext4Inode::EXT4_NODUMP_FL
+        );
+        assert_eq!(
+            Ext4Inode::mask_flags_for_mode(Ext4Inode::S_IFDIR | 0o755, flags),
+            flags
+        );
+    }
+
+    #[test]
     fn huge_file_inode_block_count_uses_filesystem_block_units() {
         let inode = Ext4Inode {
             i_blocks_lo: 7,
