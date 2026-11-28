@@ -14,16 +14,17 @@ jobs:
     permissions:
       contents: read
       issues: write
-    uses: partsfoundry/crate-workflows/.github/workflows/mutation.yml@eef0a564a45656471bedcb93e4789f507387bc89
+    uses: partsfoundry/crate-workflows/.github/workflows/mutation.yml@5624e56bc72eb766dbc2739b12431861b65d229b
     with:
-      # The template's 200 assumes about 15 seconds a mutant. Here run 45928657005
-      # took about 40 runner-seconds a mutant at fifty a shard: shards of 33 minutes, 127
-      # runner-hours, 16 hours at eight at once. Every mutant that no earlier test catches runs the
-      # whole suite, whose unmutated pass took 150 to 300 seconds on a hosted runner, against
-      # cargo-mutants' 300-second timeout. Copying the growth test's images sparsely cut a local
-      # sample of 100 mutants from 22 to 17 seconds a mutant, which projects to about 26 seconds
-      # on a hosted runner, and the suite still runs close enough to the timeout on a slow one that
-      # some survivors time out. Fifty-five make shards of about 28 minutes, with room for those
-      # timeouts: 11,553 mutants make 211 shards, inside the 256 a matrix holds.
-      mutants-per-shard: 55
+      # The template's 200 assumes about 15 seconds a mutant. Here run 45928657005 took about 40
+      # runner-seconds a mutant: every mutant that no earlier test catches runs the whole suite,
+      # whose unmutated pass took 150 to 300 seconds on a hosted runner. With the growth test's
+      # images copied sparsely, nextest, no debug information and a timeout of three times the
+      # unmutated run, a local sample of 100 mutants took 10.4 seconds a mutant instead of 22.0,
+      # and caught and missed the same mutants. That projects to about 16 seconds a mutant on a
+      # hosted runner. A hundred make shards of about 29 minutes: 11,553 mutants make 116 shards,
+      # inside the 256 a matrix holds, about 56 runner-hours and 7.3 hours at eight at once.
+      # nextest runs no doctests, and this crate has none.
+      mutants-per-shard: 100
+      test-tool: nextest
       max-parallel: 8
