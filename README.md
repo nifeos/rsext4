@@ -146,6 +146,9 @@ exits 1. Each patch's opening lines name the check it expects to fail.
   passes. On a host whose allocator overcommits, the allocator can grant a reservation within that
   bound and run out of memory only when the read fills it; the caller's bound is the control.
   `read_inode_data_into` reads a range into a caller's buffer instead.
+- The aarch64 hardware CRC32C path is little-endian only. On big-endian aarch64 the crate has only
+  the table-driven path, and `enable_hardware_crc32c` has no effect, as on an architecture with no
+  hardware path.
 - The crate's names, comments and documentation follow upstream's conventions, not those of the
   other crates that share these workflows, because a change written to upstream's conventions can go
   upstream unchanged.
