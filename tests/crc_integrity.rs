@@ -36,6 +36,10 @@ use rsext4::{
     *,
 };
 
+/// The most bytes a test accepts from `read_file`: larger than any file these
+/// tests write, so only a recorded size that a test sets on purpose reaches it.
+const MAXIMUM_READ_BYTES: usize = 1 << 20;
+
 /// Shared in-memory block device so tests can remount the same disk image and
 /// corrupt raw metadata bytes between mounts without relying on private APIs.
 #[derive(Clone)]
@@ -466,7 +470,8 @@ fn checksums_are_persisted_and_clean_remount_preserves_the_written_file() {
     let mut remount_dev = new_jbd2_dev(device.clone());
     let mut fs =
         Ext4FileSystem::mount(&mut remount_dev).expect("mount after intact checksum data failed");
-    let read_back = read_file(&mut remount_dev, &mut fs, "/crc.txt").expect("read_file failed");
+    let read_back = read_file(&mut remount_dev, &mut fs, "/crc.txt", MAXIMUM_READ_BYTES)
+        .expect("read_file failed");
     assert_eq!(read_back, payload);
     umount(fs, &mut remount_dev).expect("umount failed");
 }
@@ -598,8 +603,13 @@ fn unclean_remount_finishes_linked_extent_truncate_from_classic_orphan() {
         mappings.first_key_value().map(|(&logical, _)| logical),
         Some(0)
     );
-    let read_back =
-        read_file(&mut remount_dev, &mut recovered, "/linked").expect("read recovered linked file");
+    let read_back = read_file(
+        &mut remount_dev,
+        &mut recovered,
+        "/linked",
+        MAXIMUM_READ_BYTES,
+    )
+    .expect("read recovered linked file");
     assert_eq!(read_back, payload[..block_size]);
     umount(recovered, &mut remount_dev).expect("recovered unmount failed");
 }

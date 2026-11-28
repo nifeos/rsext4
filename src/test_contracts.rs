@@ -2038,6 +2038,10 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
         truncate, utimens, write_file,
     };
 
+    /// The most bytes a test accepts from `read_file`: larger than any file these
+    /// tests write, so only a recorded size that a test sets on purpose reaches it.
+    const MAXIMUM_READ_BYTES: usize = 1 << 20;
+
     struct MemoryBlockDevice {
         blocks: Vec<u8>,
         now: Cell<i64>,
@@ -2210,13 +2214,13 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     let file_inode = mkfile(&mut device, &mut fs, "/cov/sub/file", Some(b"hello"), None).unwrap();
     assert!(file_inode.is_file());
     assert_eq!(
-        read_file(&mut device, &mut fs, "/cov/sub/file").unwrap(),
+        read_file(&mut device, &mut fs, "/cov/sub/file", MAXIMUM_READ_BYTES).unwrap(),
         b"hello"
     );
 
     write_file(&mut device, &mut fs, "/cov/sub/file", 5, b" world").unwrap();
     assert_eq!(
-        read_file(&mut device, &mut fs, "/cov/sub/file").unwrap(),
+        read_file(&mut device, &mut fs, "/cov/sub/file", MAXIMUM_READ_BYTES).unwrap(),
         b"hello world"
     );
 
@@ -2394,7 +2398,7 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
 
     link(&mut fs, &mut device, "/cov/sub/hard", "/cov/sub/file").unwrap();
     assert_eq!(
-        read_file(&mut device, &mut fs, "/cov/sub/hard").unwrap(),
+        read_file(&mut device, &mut fs, "/cov/sub/hard", MAXIMUM_READ_BYTES).unwrap(),
         b"hello world"
     );
     assert_eq!(
@@ -2434,13 +2438,19 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
 
     create_symbol_link(&mut device, &mut fs, "/cov/sub/file", "/cov/sub/sym").unwrap();
     assert_eq!(
-        read_file(&mut device, &mut fs, "/cov/sub/sym").unwrap(),
+        read_file(&mut device, &mut fs, "/cov/sub/sym", MAXIMUM_READ_BYTES).unwrap(),
         b"hello world"
     );
     link(&mut fs, &mut device, "/sym-root-hard", "/cov/sub/sym").unwrap();
     link(&mut fs, &mut device, "/cov/sub/sym-hard", "/cov/sub/sym").unwrap();
     assert_eq!(
-        read_file(&mut device, &mut fs, "/cov/sub/sym-hard").unwrap(),
+        read_file(
+            &mut device,
+            &mut fs,
+            "/cov/sub/sym-hard",
+            MAXIMUM_READ_BYTES
+        )
+        .unwrap(),
         b"hello world"
     );
     let long_target = "/cov/sub/long-".to_string() + &"segment".repeat(12);
@@ -2468,7 +2478,13 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     assert_eq!(project_sym.i_projid, 1234);
     fs.superblock.s_feature_ro_compat &= !Ext4Superblock::EXT4_FEATURE_RO_COMPAT_PROJECT;
     assert_eq!(
-        read_file(&mut device, &mut fs, "/cov/sub/long-sym").unwrap(),
+        read_file(
+            &mut device,
+            &mut fs,
+            "/cov/sub/long-sym",
+            MAXIMUM_READ_BYTES
+        )
+        .unwrap(),
         b"long"
     );
     assert_eq!(
@@ -2670,7 +2686,13 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     assert!(replaced_file.requires_reap());
     rsext4::reap_unlinked_inode(&mut fs, &mut device, replaced_file.inode).unwrap();
     assert_eq!(
-        read_file(&mut device, &mut fs, "/cov/sub/replace-dst").unwrap(),
+        read_file(
+            &mut device,
+            &mut fs,
+            "/cov/sub/replace-dst",
+            MAXIMUM_READ_BYTES
+        )
+        .unwrap(),
         b"src"
     );
     mkdir(&mut device, &mut fs, "/cov/sub/non-empty-dir").unwrap();
@@ -2777,12 +2799,13 @@ fn rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold() {
     );
 
     truncate(&mut device, &mut fs, "/cov/sub/renamed", 4).unwrap();
-    let truncated = read_file(&mut device, &mut fs, "/cov/sub/renamed").unwrap();
+    let truncated =
+        read_file(&mut device, &mut fs, "/cov/sub/renamed", MAXIMUM_READ_BYTES).unwrap();
     assert_eq!(truncated.as_slice(), b"hell");
     truncate(&mut device, &mut fs, "/cov/sub/renamed", 4).unwrap();
     truncate(&mut device, &mut fs, "/cov/sub/renamed", 0).unwrap();
     assert_eq!(
-        read_file(&mut device, &mut fs, "/cov/sub/renamed").unwrap(),
+        read_file(&mut device, &mut fs, "/cov/sub/renamed", MAXIMUM_READ_BYTES).unwrap(),
         Vec::new()
     );
     assert_eq!(

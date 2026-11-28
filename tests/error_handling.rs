@@ -14,6 +14,10 @@ use rsext4::{
     *,
 };
 
+/// The most bytes a test accepts from `read_file`: larger than any file these
+/// tests write, so only a recorded size that a test sets on purpose reaches it.
+const MAXIMUM_READ_BYTES: usize = 1 << 20;
+
 /// Mock block device with knobs for injecting IO and capacity failures.
 struct ErrorMockDevice {
     data: Vec<u8>,
@@ -275,7 +279,8 @@ mod error_handling_tests {
 
         // The last successful file should still contain the full payload.
         let last_filename = format!("/exhaustion/file{}.dat", file_count - 1);
-        let data = read_file(&mut jbd2_dev, &mut fs, &last_filename).expect("read_file failed");
+        let data = read_file(&mut jbd2_dev, &mut fs, &last_filename, MAXIMUM_READ_BYTES)
+            .expect("read_file failed");
         assert_eq!(data, large_data);
 
         umount(fs, &mut jbd2_dev).expect("full filesystem must still unmount cleanly");

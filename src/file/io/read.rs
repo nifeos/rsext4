@@ -2,18 +2,25 @@
 
 use super::*;
 
-/// Read the whole file at `path`.
+/// Read the whole file at `path`, if it holds at most `maximum_bytes` bytes.
 ///
-/// The buffer is as large as the file's recorded size, holes included. A size
-/// that does not fit in memory is refused with `FileTooLarge` or `NoMemory`
-/// before any block is read; to bound the memory a read takes, read a range
-/// with [`read_inode_data_into`] instead.
+/// The buffer is as large as the file's recorded size, holes included. The
+/// recorded size is compared with `maximum_bytes` as a `u64`, before it is
+/// converted to `usize`, and a larger size is refused with `FileTooLarge`
+/// before the buffer is reserved or any data block of the file is read, as
+/// Linux's `kernel_read_file` compares `i_size` with its `buf_size` and
+/// refuses a larger file with `EFBIG`. Within the bound, the buffer is
+/// rounded up to whole blocks: a rounded size that overflows `usize` is
+/// refused with `FileTooLarge`, and a reservation the allocator refuses with
+/// `NoMemory`, both before any data block is read. To read part of a file
+/// into a buffer of the caller's, use [`read_inode_data_into`] instead.
 pub fn read_file<B: BlockIo>(
     device: &mut Jbd2Dev<B>,
     fs: &mut Ext4FileSystem,
     path: &str,
+    maximum_bytes: usize,
 ) -> Ext4Result<Vec<u8>> {
-    read_file_follow(device, fs, path, 0)
+    read_file_follow(device, fs, path, maximum_bytes, 0)
 }
 
 pub fn read_inode_data_into<B: BlockIo>(
@@ -136,6 +143,7 @@ fn read_file_follow<B: BlockIo>(
     device: &mut Jbd2Dev<B>,
     fs: &mut Ext4FileSystem,
     path: &str,
+    maximum_bytes: usize,
     depth: usize,
 ) -> Ext4Result<Vec<u8>> {
     if depth > 8 {
@@ -155,7 +163,7 @@ fn read_file_follow<B: BlockIo>(
             Err(_) => return Err(Ext4Error::corrupted()),
         };
         let resolved = resolve_symlink_path(path, target);
-        return read_file_follow(device, fs, &resolved, depth + 1);
+        return read_file_follow(device, fs, &resolved, maximum_bytes, depth + 1);
     }
 
     if !inode.is_file() {
@@ -166,6 +174,14 @@ fn read_file_follow<B: BlockIo>(
         });
     }
 
+    // The caller's bound is compared with the recorded size in 64 bits, before
+    // the size is converted to `usize`, so a file larger than the caller
+    // accepts is refused the same way on every target and never reaches the
+    // allocator.
+    let maximum = u64::try_from(maximum_bytes).unwrap_or(u64::MAX);
+    if inode.size() > maximum {
+        return Err(Ext4Error::file_too_large().with_operation("read_file:maximum_bytes"));
+    }
     let size = usize::try_from(inode.size()).map_err(|_| Ext4Error::file_too_large())?;
     if size == 0 {
         fs.touch_inode_atime_if_needed(device, inode_num)?;
@@ -176,10 +192,12 @@ fn read_file_follow<B: BlockIo>(
     let total_blocks = size.div_ceil(block_bytes);
 
     // The recorded size comes from the image, and a sparse file may be larger
-    // than the image, so no format bound applies. Reserve every block the
-    // loops below append, fallibly, before reading any of them: a size the
-    // allocator cannot satisfy is an error here, and no later append can
-    // reallocate.
+    // than the image, so no format bound applies; the caller's bound above is
+    // the only one. Reserve every block the loops below append, fallibly,
+    // before reading any of them: a size the allocator cannot satisfy is an
+    // error here, and no later append can reallocate. The reservation rounds
+    // the size up to whole blocks, so it exceeds the caller's bound by less
+    // than one block at most; the buffer returned never exceeds it.
     let buffer_bytes = total_blocks
         .checked_mul(block_bytes)
         .ok_or_else(|| Ext4Error::file_too_large().with_operation("read_file:buffer"))?;

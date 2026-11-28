@@ -1,7 +1,7 @@
 // crc32c.rs
 use core::sync::atomic::{AtomicBool, Ordering};
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", target_endian = "little"))]
 use crate::crc32c::arm64::crc32c_hardware;
 #[cfg(target_arch = "x86_64")]
 use crate::crc32c::x86_64::crc32c_hardware;
@@ -101,7 +101,8 @@ static HARDWARE_CRC32C: AtomicBool = AtomicBool::new(false);
 ///
 /// The instructions are the ARMv8 CRC32 extension on aarch64
 /// (`ID_AA64ISAR0_EL1.CRC32` at least 1) and SSE4.2 on x86_64 (CPUID leaf 1,
-/// ECX bit 20). On other architectures this call has no effect.
+/// ECX bit 20). On other architectures, and on big-endian aarch64, this call
+/// has no effect: rsext4 has no hardware path there.
 ///
 /// # Safety
 ///
@@ -137,7 +138,10 @@ pub fn hardware_crc32c_enabled() -> bool {
 
 #[inline]
 pub fn crc32c_append(crc: u32, data: &[u8]) -> u32 {
-    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+    #[cfg(any(
+        all(target_arch = "aarch64", target_endian = "little"),
+        target_arch = "x86_64"
+    ))]
     {
         if hardware_crc32c_enabled() {
             return unsafe {
@@ -289,9 +293,11 @@ mod tests {
 
     // The safety argument below holds where std's `crc` detection describes
     // every CPU, which this test can show only for Linux, Android and macOS,
-    // so other aarch64 hosts do not build it.
+    // so other aarch64 hosts do not build it. The hardware path exists only on
+    // little-endian aarch64.
     #[cfg(all(
         target_arch = "aarch64",
+        target_endian = "little",
         any(target_os = "linux", target_os = "android", target_os = "macos")
     ))]
     #[test]

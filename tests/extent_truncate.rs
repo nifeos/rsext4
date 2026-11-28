@@ -13,6 +13,10 @@ use std::{cell::Cell, rc::Rc};
 
 use rsext4::{error::Ext4Result, *};
 
+/// The most bytes a test accepts from `read_file`: larger than any file these
+/// tests write, so only a recorded size that a test sets on purpose reaches it.
+const MAXIMUM_READ_BYTES: usize = 1 << 20;
+
 /// In-memory block device whose write of one chosen sector fails after it lands, and whose read
 /// of one chosen sector fails once.
 struct MockBlockDevice {
@@ -130,7 +134,13 @@ fn failed_extent_truncate_keeps_every_byte_of_the_file() {
         .expect_err("inode finalize failure must abort the extent truncate");
     assert_eq!(error.kind(), Ext4ErrorKind::Io);
 
-    let data = read_file(&mut jbd2_dev, &mut fs, "/extent-truncate-tail").unwrap();
+    let data = read_file(
+        &mut jbd2_dev,
+        &mut fs,
+        "/extent-truncate-tail",
+        MAXIMUM_READ_BYTES,
+    )
+    .unwrap();
     assert_eq!(data.len(), original.len());
     let first_changed = data.iter().zip(&original).position(|(now, was)| now != was);
     assert_eq!(
@@ -232,7 +242,7 @@ fn failed_read_of_the_retained_block_leaves_the_shrink_to_orphan_recovery() {
     let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, jbd2_dev.into_inner(), true);
     let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("remount failed");
     assert_eq!(fs.superblock.s_last_orphan, 0);
-    let data = read_file(&mut jbd2_dev, &mut fs, "/tail-read").unwrap();
+    let data = read_file(&mut jbd2_dev, &mut fs, "/tail-read", MAXIMUM_READ_BYTES).unwrap();
     assert_eq!(data[..], original[..100]);
     let mut block = vec![0u8; BLOCK_SIZE];
     jbd2_dev.read_blocks(&mut block, retained_block, 1).unwrap();
@@ -281,7 +291,13 @@ fn shrinking_extent_inode_past_a_whole_index_node_frees_that_node() {
     truncate_inode(&mut jbd2_dev, &mut fs, inode_number, 100)
         .expect("shrinking a depth-2 tree must succeed");
 
-    let data = read_file(&mut jbd2_dev, &mut fs, "/extent-depth-two").unwrap();
+    let data = read_file(
+        &mut jbd2_dev,
+        &mut fs,
+        "/extent-depth-two",
+        MAXIMUM_READ_BYTES,
+    )
+    .unwrap();
     assert_eq!(data, vec![1u8; 100]);
     // 1499 data blocks and at least the second index node and its
     // leaves are free again.
@@ -289,6 +305,12 @@ fn shrinking_extent_inode_past_a_whole_index_node_frees_that_node() {
 
     umount(fs, &mut jbd2_dev).expect("unmount failed");
     let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("remount failed");
-    let data = read_file(&mut jbd2_dev, &mut fs, "/extent-depth-two").unwrap();
+    let data = read_file(
+        &mut jbd2_dev,
+        &mut fs,
+        "/extent-depth-two",
+        MAXIMUM_READ_BYTES,
+    )
+    .unwrap();
     assert_eq!(data, vec![1u8; 100]);
 }

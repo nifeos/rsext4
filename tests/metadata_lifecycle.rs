@@ -16,6 +16,10 @@ use rsext4::{
     *,
 };
 
+/// The most bytes a test accepts from `read_file`: larger than any file these
+/// tests write, so only a recorded size that a test sets on purpose reaches it.
+const MAXIMUM_READ_BYTES: usize = 1 << 20;
+
 const INODE_SIZE: u16 = DEFAULT_INODE_SIZE;
 
 /// In-memory block device with a monotonically increasing clock.
@@ -185,7 +189,7 @@ fn test_read_write_truncate_and_noatime_update_expected_timestamps() {
     let before = lookup_inode(&mut dev, &mut fs, "/rw/file");
     let before_atime = before.atime_ts(INODE_SIZE);
 
-    let data = read_file(&mut dev, &mut fs, "/rw/file").expect("read failed");
+    let data = read_file(&mut dev, &mut fs, "/rw/file", MAXIMUM_READ_BYTES).expect("read failed");
     assert_eq!(data, b"hello");
 
     let after_read = lookup_inode(&mut dev, &mut fs, "/rw/file");
@@ -204,7 +208,7 @@ fn test_read_write_truncate_and_noatime_update_expected_timestamps() {
     assert_eq!(after_flags.i_flags & Ext4Inode::EXT4_INDEX_FL, 0);
 
     let atime_before_noatime_read = after_flags.atime_ts(INODE_SIZE);
-    read_file(&mut dev, &mut fs, "/rw/file").expect("read failed");
+    read_file(&mut dev, &mut fs, "/rw/file", MAXIMUM_READ_BYTES).expect("read failed");
     let after_noatime_read = lookup_inode(&mut dev, &mut fs, "/rw/file");
     assert_eq!(
         after_noatime_read.atime_ts(INODE_SIZE),
