@@ -71,3 +71,8 @@ src/disknode/inode.rs:362 # the two set-id bits are distinct, so | and ^ agree
 src/disknode/inode.rs:407 # the two halves of the value do not share bits, so | and ^ agree
 src/disknode/inode.rs:422 # nanoseconds are below 2^30, so they never reach the epoch bits and | and ^ agree
 src/disknode/inode.rs:427 # the epoch bits are only added when set, so | on the mask adds nothing
+src/file/delete.rs:506 # the record at the wanted offset is handled just above, so an offset equal to it never reaches this test and `>=` is the same as `>`; the `==` variant is killed by the corrupt-record-after-the-offset test
+src/file/delete.rs:795 # every removed child directory later lowers its parent's link count again and the parent is freed last with its count cleared, so skipping this early adjustment leaves no visible difference
+src/file/delete.rs:872 # the rounded minimum length is only compared against a record length that the alignment and name-fit checks have already bounded, so a wrong rounding mask cannot change a result
+src/file/delete.rs:885 # a record longer than the block is always also caught by the last-valid-start check on the next line, and a record shorter than its minimum by the alignment or name-fit checks, so neither half of this pair can decide alone
+src/file/delete.rs:937 # the checksum verifier rejects a block without the tail, so this earlier tail test never decides alone
