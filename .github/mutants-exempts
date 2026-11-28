@@ -67,3 +67,8 @@ src/ext4/grow/step.rs:225 # a group holds fewer than 2^16 inodes in every test f
 src/ext4/grow/step.rs:227 # a group holds fewer than 2^16 inodes in every test filesystem, so the high half of its unused-inode count is zero whether it is shifted right, shifted left and truncated, or left at the default
 src/ext4/grow/step.rs:272 # a tail group holds fewer than 2^16 blocks at every block size up to 8 KiB, so the high half is zero whether it is shifted right or left and truncated
 src/ext4/grow/step.rs:281 # the filesystem free-block count is below 2^32 in every test filesystem, so its high half is zero whether it is shifted right or left and truncated
+src/file/delete.rs:506 # the record at the wanted offset is handled just above, so an offset equal to it never reaches this test and `>=` is the same as `>`; the `==` variant is killed by the corrupt-record-after-the-offset test
+src/file/delete.rs:795 # every removed child directory later lowers its parent's link count again and the parent is freed last with its count cleared, so skipping this early adjustment leaves no visible difference
+src/file/delete.rs:872 # the rounded minimum length is only compared against a record length that the alignment and name-fit checks have already bounded, so a wrong rounding mask cannot change a result
+src/file/delete.rs:885 # a record longer than the block is always also caught by the last-valid-start check on the next line, and a record shorter than its minimum by the alignment or name-fit checks, so neither half of this pair can decide alone
+src/file/delete.rs:937 # the checksum verifier rejects a block without the tail, so this earlier tail test never decides alone
