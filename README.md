@@ -146,6 +146,9 @@ exits 1. Each patch's opening lines name the check it expects to fail.
   size. A size that cannot be reserved is an error, but a reservation the allocator grants is then
   filled, so a large sparse file can still use all the memory an overcommitting allocator grants.
   `read_inode_data_into` reads a range into a caller's buffer instead.
+- The aarch64 hardware CRC32C path is little-endian only. On big-endian aarch64 the crate has only
+  the table-driven path, and `enable_hardware_crc32c` has no effect, as on an architecture with no
+  hardware path.
 - The crate's names, comments and documentation follow upstream's conventions, not those of the
   other crates that share these workflows, because a change written to upstream's conventions can go
   upstream unchanged.

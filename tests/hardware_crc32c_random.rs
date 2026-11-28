@@ -10,10 +10,12 @@
 //! whose CPU lacks the `crc` feature fail instead of skip, which is how CI shows the path ran.
 //!
 //! The safety argument holds where std's `crc` detection describes every CPU, which this test can
-//! show only for Linux, Android and macOS, so other hosts do not build it.
+//! show only for Linux, Android and macOS, so other hosts do not build it. The hardware path
+//! exists only on little-endian aarch64.
 
 #![cfg(all(
     target_arch = "aarch64",
+    target_endian = "little",
     any(target_os = "linux", target_os = "android", target_os = "macos")
 ))]
 
