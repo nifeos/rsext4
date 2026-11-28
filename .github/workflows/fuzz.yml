@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   fuzz:
-    uses: partsfoundry/crate-workflows/.github/workflows/fuzz.yml@5cf2aab52489c44db735cce89b0fab05d784f070
+    uses: partsfoundry/crate-workflows/.github/workflows/fuzz.yml@eef0a564a45656471bedcb93e4789f507387bc89
     with:
       # Crash inputs are public. Set true only for a crate with no unsafe code.
       public-crash-inputs: false
