@@ -2,11 +2,8 @@
 #   src/lib.rs:4 # swapping the operand order is the same arithmetic
 # A line without a reason is refused, and a line naming a survivor that no longer exists is
 # refused too, so this list can only shrink by a diff that says why.
-src/blockdev/cached_device.rs:457 # a sector size of zero is refused either way, and one that is not a power of two has an odd factor, so no power-of-two block size is a multiple of it and the last check refuses it
 src/blockgroup_description/desc.rs:149 # the high half is shifted past the 32 bits the low half fills, so the two never share a set bit and `^` composes them as `|` does
-src/checksum/dirblock.rs:117 # turning `>` into `>=` refuses a count and limit that end the block one check early: the dx tail then starts before the count, so the next check refuses the same block
-src/checksum/dirblock.rs:126 # `count > limit` already puts the counted entries past the dx tail, so turning `||` into `&&` only defers the refusal to the `data_len > tail_offset` check below; turning `block_size - tail_len` into `+` defers a tail past the block to the `tail_offset + tail_len` check, which refuses the same blocks
-src/checksum/dirblock.rs:131 # the limit check above already refuses every tail that ends past the block, so this check refuses nothing more and its mutants change no outcome
+src/extents_tree/remove.rs:176 # the high half is shifted past the 32 bits the low half fills, so the two never share a set bit and `^` composes them as `|` does
 src/dir/insert.rs:126 # `offset * rec_len` holds the walk at offset 0 once the first record has no room, so the mutant can only hang, and a hang is all a test of it can see
 src/disknode/inode_flags.rs:34 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
 src/disknode/inode_flags.rs:35 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
@@ -29,6 +26,10 @@ src/disknode/inode_flags.rs:55 # each inode flag is a distinct bit, so `^` compo
 src/disknode/inode_flags.rs:56 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
 src/disknode/inode_flags.rs:57 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
 src/disknode/inode_flags.rs:58 # each inode flag is a distinct bit, so `^` composes the mask as `|` does; `&` here fails disknode::tests::inode_flag_groups_hold_their_on_disk_values
+src/checksum/dirblock.rs:126 # `count > limit` already puts the counted entries past the dx tail, so turning `||` into `&&` only defers the refusal to the `data_len > tail_offset` check below; turning `block_size - tail_len` into `+` defers a tail past the block to the `tail_offset + tail_len` check, which refuses the same blocks
+src/blockdev/cached_device.rs:457 # a sector size of zero is refused either way, and one that is not a power of two has an odd factor, so no power-of-two block size is a multiple of it and the last check refuses it
+src/checksum/dirblock.rs:117 # turning `>` into `>=` refuses a count and limit that end the block one check early: the dx tail then starts before the count, so the next check refuses the same block
+src/checksum/dirblock.rs:131 # the limit check above already refuses every tail that ends past the block, so this check refuses nothing more and its mutants change no outcome
 src/ext4/mkfs.rs:710 # mkfs rewrites the group 0 descriptor from build_uninit_group_desc after the other groups are initialized and nothing reads it in between, so a field left out here never reaches the image
 src/ext4/mkfs.rs:711 # mkfs rewrites the group 0 descriptor from build_uninit_group_desc after the other groups are initialized and nothing reads it in between, so a field left out here never reaches the image
 src/ext4/mkfs.rs:712 # mkfs rewrites the group 0 descriptor from build_uninit_group_desc after the other groups are initialized and nothing reads it in between, so a field left out here never reaches the image
@@ -36,7 +37,6 @@ src/ext4/mkfs.rs:713 # mkfs rewrites the group 0 descriptor from build_uninit_gr
 src/ext4/mkfs.rs:714 # mkfs rewrites the group 0 descriptor from build_uninit_group_desc after the other groups are initialized and nothing reads it in between, so a field left out here never reaches the image
 src/ext4/mkfs.rs:715 # mkfs rewrites the group 0 descriptor from build_uninit_group_desc after the other groups are initialized and nothing reads it in between, so a field left out here never reaches the image
 src/ext4/mkfs.rs:716 # mkfs rewrites the group 0 descriptor from build_uninit_group_desc after the other groups are initialized and nothing reads it in between, so a field left out here never reaches the image
-src/extents_tree/remove.rs:176 # the high half is shifted past the 32 bits the low half fills, so the two never share a set bit and `^` composes them as `|` does
 src/extents_tree/root.rs:181 # the high leaf bits are shifted past the 32 low ones, so `^` joins the two halves as `|` does
 src/file/xattr.rs:219 # an inline encoding error other than NoSpace names an entry that the block encoding refuses with the same error, so sending it to the block path changes nothing; the other mutants on this line are killed by persistence_kills::an_exclusive_external_block_is_rewritten_in_place
 src/file/xattr.rs:391 # `&&` to `||` only changes how many revoke records the transaction reserves credit for, and a larger reservation changes no stored byte; the other mutants on this line are killed by mutation_kills::shared_store_count_is_the_revoke_count
