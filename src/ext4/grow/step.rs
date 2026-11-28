@@ -16,11 +16,16 @@ const MAX_BATCH_BITMAP_BYTES: u64 = 2 * 1024 * 1024;
 /// Extends a published partial tail alone, otherwise bounds bitmap memory and
 /// group count, then halves the candidate until its complete journal budget
 /// fits. A one-group candidate that cannot fit is unsupported, without writes.
+/// A target that does not lie beyond `sb` is refused, so every returned
+/// geometry is larger and a caller's loop toward `target` always advances.
 pub(super) fn next_geometry(
     sb: &Ext4Superblock,
     target: u64,
     credits: usize,
 ) -> Ext4Result<Ext4Superblock> {
+    if target <= sb.blocks_count() {
+        return Err(Ext4Error::invalid_input().with_operation("grow:target_not_beyond_geometry"));
+    }
     let per_group = u64::from(sb.s_blocks_per_group);
     let group = (sb.blocks_count() - u64::from(sb.s_first_data_block)) / per_group;
     let old_gdt = sb
