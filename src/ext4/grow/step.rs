@@ -428,3 +428,6 @@ impl GrowthStep {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;
