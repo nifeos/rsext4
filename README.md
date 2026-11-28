@@ -143,9 +143,9 @@ exits 1. Each patch's opening lines name the check it expects to fail.
 ## BUGS
 
 - `read_file` reads a whole file into one buffer, holes included, up to the bound its caller
-  passes. On a host whose allocator overcommits, a reservation within that bound can be granted
-  and then fail when it is filled; the caller's bound is the control. `read_inode_data_into` reads
-  a range into a caller's buffer instead.
+  passes. On a host whose allocator overcommits, the allocator can grant a reservation within that
+  bound and run out of memory only when the read fills it; the caller's bound is the control.
+  `read_inode_data_into` reads a range into a caller's buffer instead.
 - The crate's names, comments and documentation follow upstream's conventions, not those of the
   other crates that share these workflows, because a change written to upstream's conventions can go
   upstream unchanged.

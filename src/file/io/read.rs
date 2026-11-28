@@ -4,13 +4,16 @@ use super::*;
 
 /// Read the whole file at `path`, if it holds at most `maximum_bytes` bytes.
 ///
-/// The buffer is as large as the file's recorded size, holes included. A
-/// recorded size larger than `maximum_bytes` is refused with `FileTooLarge`
-/// before anything is reserved or any block is read, as Linux's
-/// `kernel_read_file` refuses a file larger than its `buf_size` with `EFBIG`.
-/// A size within the bound that the allocator cannot reserve is refused with
-/// `NoMemory`, also before any block is read. To read part of a file into a
-/// buffer of the caller's, use [`read_inode_data_into`] instead.
+/// The buffer is as large as the file's recorded size, holes included. The
+/// recorded size is compared with `maximum_bytes` as a `u64`, before it is
+/// converted to `usize`, and a larger size is refused with `FileTooLarge`
+/// before the buffer is reserved or any data block of the file is read, as
+/// Linux's `kernel_read_file` compares `i_size` with its `buf_size` and
+/// refuses a larger file with `EFBIG`. Within the bound, the buffer is
+/// rounded up to whole blocks: a rounded size that overflows `usize` is
+/// refused with `FileTooLarge`, and a reservation the allocator refuses with
+/// `NoMemory`, both before any data block is read. To read part of a file
+/// into a buffer of the caller's, use [`read_inode_data_into`] instead.
 pub fn read_file<B: BlockIo>(
     device: &mut Jbd2Dev<B>,
     fs: &mut Ext4FileSystem,
@@ -171,12 +174,15 @@ fn read_file_follow<B: BlockIo>(
         });
     }
 
-    let size = usize::try_from(inode.size()).map_err(|_| Ext4Error::file_too_large())?;
-    // The caller's bound is checked before anything is reserved, so a file
-    // larger than the caller accepts never reaches the allocator.
-    if size > maximum_bytes {
+    // The caller's bound is compared with the recorded size in 64 bits, before
+    // the size is converted to `usize`, so a file larger than the caller
+    // accepts is refused the same way on every target and never reaches the
+    // allocator.
+    let maximum = u64::try_from(maximum_bytes).unwrap_or(u64::MAX);
+    if inode.size() > maximum {
         return Err(Ext4Error::file_too_large().with_operation("read_file:maximum_bytes"));
     }
+    let size = usize::try_from(inode.size()).map_err(|_| Ext4Error::file_too_large())?;
     if size == 0 {
         fs.touch_inode_atime_if_needed(device, inode_num)?;
         return Ok(Vec::new());

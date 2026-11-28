@@ -1530,12 +1530,14 @@ fn read_file_refuses_a_recorded_size_past_the_bound_or_unreservable_and_reads_a_
         op: "read_file:maximum_bytes",
     });
 
-    // With no bound of the caller's, a buffer whose size overflows `usize` is
-    // refused before the allocator is asked. Below that, no allocator holds
-    // four exbibytes, and none reserves more than `isize::MAX`, so the
-    // fallible reservation fails. On a 32-bit target none of these sizes fits
-    // in `usize`. Either way the call returns an error.
-    let no_memory = if cfg!(target_pointer_width = "64") {
+    // With a bound of `usize::MAX` on a 64-bit target, a buffer whose size
+    // overflows `usize` is refused before the allocator is asked. Below that,
+    // no allocator holds four exbibytes, and none reserves more than
+    // `isize::MAX`, so the fallible reservation fails. On a 32-bit target each
+    // of these sizes is past `usize::MAX`, so the bound refuses it. Either way
+    // the call returns an error.
+    let wide = cfg!(target_pointer_width = "64");
+    let no_memory = if wide {
         Ext4ErrorKind::NoMemory
     } else {
         Ext4ErrorKind::FileTooLarge
@@ -1550,10 +1552,10 @@ fn read_file_refuses_a_recorded_size_past_the_bound_or_unreservable_and_reads_a_
         let refused = read_file(&mut jbd2_dev, &mut fs, "/sized", usize::MAX)
             .expect_err("no buffer of this size can be reserved");
         assert_eq!(refused.kind(), expected, "recorded size {recorded_size}");
-        assert_ne!(
-            refused.context(),
-            past_the_bound,
-            "recorded size {recorded_size} is within a bound of usize::MAX"
+        assert_eq!(
+            refused.context() == past_the_bound,
+            !wide,
+            "recorded size {recorded_size} is past a bound of usize::MAX only on a 32-bit target"
         );
 
         // A caller's bound refuses the same size before the allocator is asked.
