@@ -58,3 +58,16 @@ src/jbd2/jbd2.rs:1133 # the set is only extended to filter transactions that are
 src/jbd2/jbd2.rs:1161 # the metadata and forced unit access flags share no bits, so `|` and `^` are the same value
 src/jbd2/jbd2.rs:1453 # the buffer only reserves capacity and every caller extends it, so an empty buffer gives the same result as long as allocation succeeds
 src/jbd2/jbd2.rs:1862 # the file type bits and the permission bits share no bits, so `|` and `^` are the same value
+src/disknode/inode.rs:75 # the header bytes that these indices reach are all zero
+src/disknode/inode.rs:76 # the header bytes that these indices reach are all zero
+src/disknode/inode.rs:114 # the two halves of the value do not share bits, so | and ^ agree
+src/disknode/inode.rs:143 # the two halves of the value do not share bits, so | and ^ agree
+src/disknode/inode.rs:242 # the two halves of the value do not share bits, so | and ^ agree
+src/disknode/inode.rs:247 # the two halves of the value do not share bits, so | and ^ agree
+src/disknode/inode.rs:262 # the two halves of the value do not share bits, so | and ^ agree
+src/disknode/inode.rs:343 # the type bits and the permission bits do not overlap, so | and ^ agree
+src/disknode/inode.rs:351 # the three execute bits are distinct, so | and ^ agree
+src/disknode/inode.rs:362 # the two set-id bits are distinct, so | and ^ agree
+src/disknode/inode.rs:407 # the two halves of the value do not share bits, so | and ^ agree
+src/disknode/inode.rs:422 # nanoseconds are below 2^30, so they never reach the epoch bits and | and ^ agree
+src/disknode/inode.rs:427 # the epoch bits are only added when set, so | on the mask adds nothing
