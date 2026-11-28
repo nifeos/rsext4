@@ -1901,6 +1901,8 @@ pub fn create_journal_entry<B: BlockIo>(
 #[cfg(test)]
 #[cfg(not(miri))]
 mod tests {
+    mod kills;
+
     use alloc::{vec, vec::Vec};
 
     use super::*;

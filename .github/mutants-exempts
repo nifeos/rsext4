@@ -45,3 +45,10 @@ src/file/xattr.rs:426 # an inline area that ends exactly at the end of the inode
 src/file/xattr.rs:567 # `value_cursor < value_base` is implied by `value_cursor < names_end` because the names always end at or after the value base; the other mutants on this line are killed by mutation_kills::encoding_values_fit_exactly_or_are_refused
 src/file/xattr.rs:912 # `value_offset > storage.len() - value_base` is implied by `value_end > storage.len()` because a non-empty value ends past its start, so the mutants on this line cannot change a result
 src/hashtree/mutation.rs:248 # both blocks are appended to a one-block directory, which always map to logical blocks 1 and 2, so the check cannot fail and `||` and `&&` give the same result
+src/jbd2/jbd2.rs:227 # the reserve grows by exactly the remaining room or 256, and the remaining room is the only observable limit, so `-` and `+` give the same final length of the reserve after the push loop
+src/jbd2/jbd2.rs:409 # the high half is shifted past bit 32 and the low half has no bits there, so `|` and `^` give the same block number
+src/jbd2/jbd2.rs:459 # the high half is shifted past bit 32 and the low half has no bits there, so `|` and `^` give the same block number
+src/jbd2/jbd2.rs:899 # the replay stops at the last tag flag, so tags left over from an earlier descriptor are never read and clearing the buffer cannot change a result
+src/jbd2/jbd2.rs:982 # the tag capacity computed from the block size keeps the offset within the descriptor, so this check cannot fail
+src/jbd2/jbd2.rs:1076 # the metadata and forced unit access flags share no bits, so `|` and `^` are the same value
+src/jbd2/jbd2.rs:1082 # the committing transaction always ends in the journal flush phase with the current sequence, so neither half can be true on its own
