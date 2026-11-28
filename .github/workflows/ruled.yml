@@ -10,4 +10,4 @@ jobs:
     permissions:
       pull-requests: write
       actions: write
-    uses: partsfoundry/crate-workflows/.github/workflows/ruled.yml@eef0a564a45656471bedcb93e4789f507387bc89
+    uses: partsfoundry/crate-workflows/.github/workflows/ruled.yml@5624e56bc72eb766dbc2739b12431861b65d229b
