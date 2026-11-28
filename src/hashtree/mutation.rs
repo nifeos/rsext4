@@ -1147,6 +1147,10 @@ fn hash_tree_error(error: HashTreeError) -> Ext4Error {
 
 #[cfg(test)]
 #[cfg(not(miri))]
+mod kills;
+
+#[cfg(test)]
+#[cfg(not(miri))]
 mod tests {
     use super::*;
 
