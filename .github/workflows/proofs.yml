@@ -13,4 +13,4 @@ jobs:
   # Kani, the falsification replay and, for a crate that depends on loom, its loom models. A crate
   # whose models need a preemption bound passes `loom-max-preemptions: <n>` under `with:`.
   proofs:
-    uses: partsfoundry/crate-workflows/.github/workflows/proofs.yml@5624e56bc72eb766dbc2739b12431861b65d229b
+    uses: partsfoundry/crate-workflows/.github/workflows/proofs.yml@313855c6965b86e0584f8af9ffda9ccf5e69a316
