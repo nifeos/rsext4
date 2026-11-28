@@ -772,6 +772,8 @@ fn initialize_other_groups_bitmaps<B: BlockIo>(
 #[cfg(test)]
 #[cfg(not(miri))]
 mod tests {
+    mod kills;
+
     use super::*;
 
     struct TinyDevice;
