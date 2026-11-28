@@ -17,6 +17,10 @@ use rsext4::{
     *,
 };
 
+/// The most bytes a test accepts from `read_file`: larger than any file these
+/// tests write, so only a recorded size that a test sets on purpose reaches it.
+const MAXIMUM_READ_BYTES: usize = 1 << 20;
+
 fn test_mkdir<B: BlockIo + rsext4::Clock>(
     device: &mut Jbd2Dev<B>,
     fs: &mut Ext4FileSystem,
@@ -502,12 +506,22 @@ mod directory_functional_tests {
         .expect("mkfile failed");
 
         // Each branch should preserve its own payload.
-        let read_project = read_file(&mut jbd2_dev, &mut fs, "/documents/projects/project1.txt")
-            .expect("read_file failed");
+        let read_project = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/documents/projects/project1.txt",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read_file failed");
         assert_eq!(read_project, project_data.to_vec());
 
-        let read_notes = read_file(&mut jbd2_dev, &mut fs, "/documents/personal/notes.txt")
-            .expect("read_file failed");
+        let read_notes = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/documents/personal/notes.txt",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read_file failed");
         assert_eq!(read_notes, personal_data.to_vec());
 
         umount(fs, &mut jbd2_dev).expect("umount failed");
@@ -544,14 +558,19 @@ mod directory_functional_tests {
             let filename = format!("/findtest/file{}.txt", i);
             let expected_data = format!("Content of file {}", i);
 
-            let found_data =
-                read_file(&mut jbd2_dev, &mut fs, &filename).expect("read_file failed");
+            let found_data = read_file(&mut jbd2_dev, &mut fs, &filename, MAXIMUM_READ_BYTES)
+                .expect("read_file failed");
             assert_eq!(found_data, expected_data.as_bytes().to_vec());
         }
 
         // A missing file should still report `ENOENT`.
-        let not_found = read_file(&mut jbd2_dev, &mut fs, "/findtest/notexist.txt")
-            .expect_err("missing file should fail");
+        let not_found = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/findtest/notexist.txt",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect_err("missing file should fail");
         assert_eq!(not_found.kind(), Ext4ErrorKind::NotFound);
 
         umount(fs, &mut jbd2_dev).expect("umount failed");
@@ -584,8 +603,13 @@ mod directory_functional_tests {
 
         delete_dir(&mut fs, &mut jbd2_dev, "/nonempty")
             .expect("recursive helper must remove a non-empty tree");
-        let error = read_file(&mut jbd2_dev, &mut fs, "/nonempty/file.txt")
-            .expect_err("removed tree must be unreachable");
+        let error = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/nonempty/file.txt",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect_err("removed tree must be unreachable");
         assert_eq!(error.kind(), Ext4ErrorKind::NotFound);
 
         test_mkdir(&mut jbd2_dev, &mut fs, "/nonempty").expect("recreate directory");
@@ -667,7 +691,8 @@ mod directory_functional_tests {
         }
 
         for (path, content) in &files {
-            let read_data = read_file(&mut jbd2_dev, &mut fs, path).expect("read_file failed");
+            let read_data = read_file(&mut jbd2_dev, &mut fs, path, MAXIMUM_READ_BYTES)
+                .expect("read_file failed");
             assert_eq!(read_data, content.as_bytes().to_vec());
         }
 
@@ -716,11 +741,12 @@ mod directory_functional_tests {
         }
 
         assert_eq!(
-            read_file(&mut jbd2_dev, &mut fs, "/link8").expect("eight hops resolve"),
+            read_file(&mut jbd2_dev, &mut fs, "/link8", MAXIMUM_READ_BYTES)
+                .expect("eight hops resolve"),
             b"end of the chain"
         );
         assert_eq!(
-            read_file(&mut jbd2_dev, &mut fs, "/link9")
+            read_file(&mut jbd2_dev, &mut fs, "/link9", MAXIMUM_READ_BYTES)
                 .expect_err("a ninth hop is refused")
                 .kind(),
             Ext4ErrorKind::InvalidInput

@@ -142,10 +142,10 @@ exits 1. Each patch's opening lines name the check it expects to fail.
 
 ## BUGS
 
-- `read_file` reads a whole file into one buffer, holes included, as large as the file's recorded
-  size. A size that cannot be reserved is an error, but a reservation the allocator grants is then
-  filled, so a large sparse file can still use all the memory an overcommitting allocator grants.
-  `read_inode_data_into` reads a range into a caller's buffer instead.
+- `read_file` reads a whole file into one buffer, holes included, up to the bound its caller
+  passes. On a host whose allocator overcommits, a reservation within that bound can be granted
+  and then fail when it is filled; the caller's bound is the control. `read_inode_data_into` reads
+  a range into a caller's buffer instead.
 - The crate's names, comments and documentation follow upstream's conventions, not those of the
   other crates that share these workflows, because a change written to upstream's conventions can go
   upstream unchanged.
