@@ -100,3 +100,5 @@ src/file/delete.rs:937 # the checksum verifier rejects a block without the tail,
 src/ext4/mkfs.rs:85 # the default incompatible feature set is a constant that holds the file type and extent bits beside the 64-bit one, so `^` and `|` with the 64-bit bit leave it nonzero just as `&` does
 src/ext4/mkfs.rs:117 # the default read-only feature set is a constant that holds the extra inode size and metadata checksum bits beside sparse super, so `^` and `|` with the sparse super bit leave it nonzero just as `&` does
 src/ext4/mkfs.rs:120 # the reserved descriptor block count is the constant zero, so subtracting it is the same as adding it; the other mutants here fail ext4::mkfs::tests::kills::a_lone_group_must_hold_its_superblock_descriptor_table_and_bitmaps
+src/ext4/mount.rs:77 # the signed and unsigned hash flags are the distinct single bits 0x1 and 0x2, so `^` of the two constants is the same mask as `|`
+src/ext4/mount.rs:328 # the state is first masked to the error bit 0x2, which never overlaps the clean bit 0x1, so `^` with the clean bit sets it exactly as `|` does
