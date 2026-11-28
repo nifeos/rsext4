@@ -1022,6 +1022,8 @@ impl Ext4FileSystem {
 mod tests {
     use super::*;
 
+    mod kills;
+
     #[test]
     fn journal_mapping_must_not_change_during_replay() {
         let journal_inode = InodeNumber::new(JOURNAL_FILE_INODE as u32).unwrap();
