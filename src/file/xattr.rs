@@ -940,7 +940,7 @@ fn round_up_4(value: usize) -> Ext4Result<usize> {
 #[cfg(test)]
 #[cfg(not(miri))]
 mod fault_tests {
-    mod stored_value;
+    mod kills;
 
     use alloc::{rc::Rc, vec, vec::Vec};
     use core::cell::Cell;
