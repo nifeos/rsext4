@@ -42,14 +42,14 @@ src/test_contracts.rs rsext4_bmalloc_allocator_rules_hold 119 upstream code, unc
 src/test_contracts.rs rsext4_blockgroup_table_and_stats_rules_hold 131 upstream code, unchanged
 src/test_contracts.rs rsext4_extent_tree_lookup_and_run_rules_hold 266 upstream code, unchanged
 src/test_contracts.rs rsext4_dirblock_checksum_edge_rules_hold 117 upstream code, unchanged
-src/test_contracts.rs rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold 779 upstream code, unchanged
+src/test_contracts.rs rsext4_mounted_filesystem_file_dir_and_metadata_rules_hold 799 upstream code, unchanged but for the bound that fix 19 adds to every read_file call
 tests/extent_restart.rs build_large_legacy_fixture 129 upstream code, unchanged
 tests/extent_restart.rs assert_first_restart_commit 111 fix 2b, as upstream pull request 2829 adds it
 tests/file_operations.rs failed_legacy_truncate_bitmap_write_restores_mapping_and_accounting 118 upstream code, unchanged
 tests/filesystem_growth.rs growth_round_trip 195 upstream code, unchanged
 tests/filesystem_growth.rs interrupted_growth_round_trip 289 upstream code, unchanged but for its image copies, which go through copy_image
 tests/integration_test.rs owned_mount_injects_clock_separately_from_block_io 132 upstream code, unchanged
-tests/linux_image_repro.rs linux_indexed_directory_lookup_uses_on_disk_htree_root 161 upstream code, unchanged
+tests/linux_image_repro.rs linux_indexed_directory_lookup_uses_on_disk_htree_root 166 upstream code, unchanged but for the bound that fix 19 adds to every read_file call
 tests/linux_image_repro.rs failed_linear_to_htree_conversion_restores_linear_directory 175 upstream code, unchanged
 tests/linux_image_repro.rs indexed_delete_and_rename_keep_linux_htree_layout 195 upstream code, unchanged
 tests/linux_image_repro.rs failed_owned_htree_leaf_split_rolls_back_after_data_write 175 upstream code, unchanged
@@ -57,8 +57,8 @@ tests/linux_image_repro.rs file_xattr_extent_map_geometry_round_trip 310 upstrea
 tests/linux_image_repro.rs replay_checksum_journal_from_debugfs 108 upstream code, unchanged
 tests/linux_image_repro.rs legacy_sparse_truncate_prunes_single_double_and_triple_roots 129 upstream code, unchanged
 tests/linux_image_repro.rs legacy_orphan_recovery_truncates_linked_and_reaps_unlinked_inode 132 upstream code, unchanged
-tests/linux_image_repro.rs shifted_ranges_rebuild_multiple_leaves_and_preserve_unwritten_state 119 upstream code, unchanged
-tests/unwritten_extents.rs partial_write_converts_only_the_written_unwritten_block 102 upstream code, unchanged
+tests/linux_image_repro.rs shifted_ranges_rebuild_multiple_leaves_and_preserve_unwritten_state 121 upstream code, unchanged but for the bound that fix 19 adds to every read_file call
+tests/unwritten_extents.rs partial_write_converts_only_the_written_unwritten_block 112 upstream code, unchanged but for the bound that fix 19 adds to every read_file call
 tests/unwritten_extents.rs failed_finish_restores_external_leaf_to_unwritten 103 upstream code, unchanged
 tests/unwritten_extents.rs assert_failed_multi_segment_extent_removal_is_atomic 103 upstream code, unchanged
 tests/unwritten_extents.rs assert_failed_insert_range_restores_old_tree 106 upstream code, unchanged

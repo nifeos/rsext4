@@ -19,6 +19,10 @@ use rsext4::{
     *,
 };
 
+/// The most bytes a test accepts from `read_file`: larger than any file these
+/// tests write, so only a recorded size that a test sets on purpose reaches it.
+const MAXIMUM_READ_BYTES: usize = 1 << 20;
+
 /// In-memory block device whose clock can be told to fail once.
 struct MockBlockDevice {
     data: Vec<u8>,
@@ -572,7 +576,10 @@ mod file_creation_tests {
             );
             assert!(lookup(&mut device, &mut fs, "/file").is_none());
         }
-        assert_eq!(read_file(&mut device, &mut fs, "/file").unwrap(), data);
+        assert_eq!(
+            read_file(&mut device, &mut fs, "/file", MAXIMUM_READ_BYTES).unwrap(),
+            data
+        );
     }
 }
 
