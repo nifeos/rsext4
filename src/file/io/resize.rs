@@ -456,3 +456,7 @@ fn finish_orphaned_truncate<B: BlockIo>(
         Ok(())
     })
 }
+
+#[cfg(test)]
+#[cfg(not(miri))]
+mod tests;
