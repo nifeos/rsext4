@@ -14,7 +14,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-    uses: partsfoundry/crate-workflows/.github/workflows/mutation.yml@5624e56bc72eb766dbc2739b12431861b65d229b
+    uses: partsfoundry/crate-workflows/.github/workflows/mutation.yml@313855c6965b86e0584f8af9ffda9ccf5e69a316
     with:
       # The template's 200 assumes about 15 seconds a mutant. Here run 45928657005 took about 40
       # runner-seconds a mutant: every mutant that no earlier test catches runs the whole suite,
