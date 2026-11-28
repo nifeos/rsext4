@@ -540,3 +540,559 @@ fn a_transaction_larger_than_one_descriptor_continues_in_a_clean_second_descript
         }
     }
 }
+
+fn capture() -> CaptureIo {
+    CaptureIo {
+        blocks: vec![0; 4096 * BLOCK_SIZE],
+        flags: Vec::new(),
+    }
+}
+
+fn log_block(io: &CaptureIo, relative: u64) -> &[u8] {
+    let start = (JOURNAL_START + relative) as usize * BLOCK_SIZE;
+    &io.blocks[start..start + BLOCK_SIZE]
+}
+
+#[test]
+fn revoke_records_split_at_the_capacity_and_keep_every_block_number() {
+    for (features, entry) in [(0, 4usize), (JBD2_FEATURE_INCOMPAT_64BIT, 8usize)] {
+        let mut writer = system(features);
+        writer.jbd2_super_block.s_maxlen = 1024;
+        writer.max_len = 1024;
+        let capacity = (BLOCK_SIZE - 16) / entry;
+        let revoked: Vec<AbsoluteBN> = (0..capacity + 2)
+            .map(|index| AbsoluteBN::new(500 + index as u64))
+            .collect();
+        let mut io = capture();
+        writer
+            .write_revoke_records(&mut io, &[], 9, BLOCK_SIZE, &revoked)
+            .expect("revoke records");
+        assert_eq!(writer.head, 3);
+        let first = writer.parse_revoke_blocks(log_block(&io, 1)).unwrap();
+        let second = writer.parse_revoke_blocks(log_block(&io, 2)).unwrap();
+        assert_eq!(first.blocks, revoked[..capacity]);
+        assert_eq!(second.blocks, revoked[capacity..]);
+        let header = JournalHeaderS::from_disk_bytes(&log_block(&io, 2)[..12]);
+        assert_eq!(header.h_blocktype, JBD2_BLOCKTYPE_REVOKE);
+        assert_eq!(header.h_sequence, 9);
+        // The second record is cleared before it is filled.
+        assert!(log_block(&io, 2)[16 + 2 * entry..].iter().all(|b| *b == 0));
+    }
+}
+
+#[test]
+fn revoke_records_need_the_sixty_four_bit_feature_for_a_high_block_and_write_nothing_when_empty() {
+    let mut writer = system(0);
+    let mut io = capture();
+    writer
+        .write_revoke_records(&mut io, &[], 1, BLOCK_SIZE, &[])
+        .expect("nothing to write");
+    assert_eq!(writer.head, 1);
+    assert!(io.blocks.iter().all(|b| *b == 0));
+    let high = [AbsoluteBN::new(1 << 32)];
+    assert_eq!(
+        operation(writer.write_revoke_records(&mut io, &[], 1, BLOCK_SIZE, &high)),
+        "jbd2:64bit_revoke"
+    );
+}
+
+#[test]
+fn a_checksummed_revoke_block_ends_with_its_own_checksum_and_a_block_too_small_is_refused() {
+    let mut writer = system(JBD2_FEATURE_INCOMPAT_CSUM_V3);
+    let mut io = capture();
+    writer
+        .write_revoke_records(&mut io, &[], 3, BLOCK_SIZE, &[AbsoluteBN::new(5)])
+        .expect("revoke records");
+    let block = log_block(&io, 1);
+    let mut zeroed = block.to_vec();
+    zeroed[BLOCK_SIZE - 4..].fill(0);
+    let expected = jbd2_descriptor_block_csum32(&writer.jbd2_super_block.s_uuid, &zeroed).unwrap();
+    assert_eq!(block[BLOCK_SIZE - 4..], expected.to_be_bytes());
+    assert_eq!(
+        operation(writer.write_revoke_records(&mut io, &[], 3, 8, &[AbsoluteBN::new(5)])),
+        "jbd2:revoke_size"
+    );
+    // Room for the header only: no entry fits.
+    assert_eq!(
+        operation(writer.write_revoke_records(&mut io, &[], 3, 20, &[AbsoluteBN::new(5)])),
+        "jbd2:revoke_capacity"
+    );
+}
+
+#[test]
+fn recording_an_abort_keeps_an_earlier_error_and_writes_with_forced_unit_access() {
+    let mut writer = system(0);
+    let mut io = capture();
+    writer.record_abort_with_mapping(&mut io, &[]).unwrap();
+    assert_eq!(writer.jbd2_super_block.s_errno, JBD2_DISK_ERROR_IO);
+    assert_eq!(io.flags, vec![WriteFlags::METADATA | WriteFlags::FUA]);
+    writer.jbd2_super_block.s_errno = 5;
+    writer.record_abort_with_mapping(&mut io, &[]).unwrap();
+    assert_eq!(writer.jbd2_super_block.s_errno, 5);
+    writer
+        .clear_recorded_error_with_mapping(&mut io, &[])
+        .unwrap();
+    assert_eq!(writer.jbd2_super_block.s_errno, 0);
+    assert_eq!(io.flags.len(), 3);
+    assert!(
+        io.flags
+            .iter()
+            .all(|f| *f == WriteFlags::METADATA | WriteFlags::FUA)
+    );
+}
+
+/// A block device with a chosen block size and no stored data.
+struct SizedIo(usize);
+
+impl FilesystemBlockIo for SizedIo {
+    fn block_size(&self) -> usize {
+        self.0
+    }
+
+    fn read(&mut self, buffer: &mut [u8], _block: AbsoluteBN, _count: u32) -> Ext4Result<()> {
+        buffer.fill(0);
+        Ok(())
+    }
+
+    fn write(&mut self, _buffer: &[u8], _block: AbsoluteBN, _count: u32) -> Ext4Result<()> {
+        Ok(())
+    }
+
+    fn write_with_flags(
+        &mut self,
+        _buffer: &[u8],
+        _block: AbsoluteBN,
+        _count: u32,
+        _flags: WriteFlags,
+    ) -> Ext4Result<()> {
+        Ok(())
+    }
+
+    fn flush(&mut self) -> Ext4Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn the_journal_superblock_needs_a_block_of_at_least_1024_bytes() {
+    let mut writer = system(0);
+    writer
+        .write_journal_superblock_with_mapping_flags(&mut SizedIo(1024), &[], WriteFlags::METADATA)
+        .expect("1024 is enough");
+    assert_eq!(
+        operation(writer.write_journal_superblock_with_mapping_flags(
+            &mut SizedIo(1023),
+            &[],
+            WriteFlags::METADATA
+        )),
+        "jbd2:small_block"
+    );
+}
+
+fn commit_one(
+    writer: &mut JBD2DEVSYSTEM,
+    io: &mut CaptureIo,
+    homes: &[(u64, u8)],
+    revoked: &[u64],
+) {
+    writer.running_transaction.updates = homes
+        .iter()
+        .map(|(home, fill)| {
+            Jbd2Update(
+                AbsoluteBN::new(*home),
+                vec![*fill; BLOCK_SIZE].into_boxed_slice(),
+            )
+        })
+        .collect();
+    writer.running_transaction.revoked_blocks =
+        revoked.iter().map(|b| AbsoluteBN::new(*b)).collect();
+    assert!(writer.start_committing_transaction().unwrap());
+    let time = Jbd2CommitTimestamp::try_from(Ext4Timestamp { sec: 1, nsec: 0 }).unwrap();
+    writer
+        .write_committing_transaction(io, &[], time)
+        .expect("commit");
+}
+
+fn home(io: &CaptureIo, block: u64) -> u8 {
+    io.blocks[block as usize * BLOCK_SIZE]
+}
+
+#[test]
+fn a_checkpoint_writes_each_image_home_unless_a_later_transaction_replaces_or_revokes_it() {
+    let mut writer = system(0);
+    writer.jbd2_super_block.s_maxlen = 1024;
+    writer.max_len = 1024;
+    let mut io = capture();
+    commit_one(
+        &mut writer,
+        &mut io,
+        &[(2000, 1), (2001, 1), (2002, 1)],
+        &[],
+    );
+    commit_one(&mut writer, &mut io, &[(2000, 2)], &[2001]);
+    commit_one(&mut writer, &mut io, &[(2003, 3)], &[]);
+    let second_start = writer.checkpoint_transactions[1].log_start;
+    let used = writer.used_log_records;
+    let first_records = writer.checkpoint_transactions[0].log_records;
+    io.flags.clear();
+
+    // Only the first transaction: its images that the second replaces or
+    // revokes stay unwritten.
+    assert!(
+        writer
+            .checkpoint_transactions_with_mapping(&mut io, &[], 1)
+            .unwrap()
+    );
+    assert_eq!(home(&io, 2000), 0);
+    assert_eq!(home(&io, 2001), 0);
+    assert_eq!(home(&io, 2002), 1);
+    assert_eq!(writer.jbd2_super_block.s_start, second_start);
+    assert_eq!(writer.jbd2_super_block.s_sequence, 2);
+    assert_eq!(writer.used_log_records, used - first_records);
+    assert_eq!(writer.checkpoint_transactions.len(), 2);
+    assert_eq!(io.flags, vec![WriteFlags::METADATA | WriteFlags::FUA]);
+
+    // Both remaining: the newest image of a block wins, and with nothing left
+    // the log is empty.
+    assert!(
+        writer
+            .checkpoint_transactions_with_mapping(&mut io, &[], 5)
+            .unwrap()
+    );
+    assert_eq!(home(&io, 2000), 2);
+    assert_eq!(home(&io, 2001), 0);
+    assert_eq!(home(&io, 2003), 3);
+    assert_eq!(writer.jbd2_super_block.s_start, 0);
+    assert_eq!(writer.jbd2_super_block.s_sequence, writer.sequence);
+    assert_eq!(writer.used_log_records, 0);
+    assert!(
+        !writer
+            .checkpoint_transactions_with_mapping(&mut io, &[], 5)
+            .unwrap()
+    );
+}
+
+#[test]
+fn a_checkpoint_of_two_transactions_does_not_write_the_older_image_over_the_newer() {
+    let mut writer = system(0);
+    writer.jbd2_super_block.s_maxlen = 1024;
+    writer.max_len = 1024;
+    let mut io = capture();
+    commit_one(&mut writer, &mut io, &[(2000, 1), (2005, 1)], &[]);
+    commit_one(&mut writer, &mut io, &[(2000, 2)], &[2005]);
+    assert!(
+        writer
+            .checkpoint_transactions_with_mapping(&mut io, &[], 2)
+            .unwrap()
+    );
+    assert_eq!(home(&io, 2000), 2);
+    assert_eq!(home(&io, 2005), 0);
+}
+
+/// Commits one image with the compat checksum, lets `edit` change the commit
+/// block, replays, and returns the failure operation if there is one.
+fn compat_replay(edit: impl Fn(&mut CommitHeader)) -> (Option<&'static str>, u8) {
+    let mut writer = system(0);
+    writer.jbd2_super_block.s_feature_compat = JBD2_FEATURE_COMPAT_CHECKSUM;
+    writer.jbd2_super_block.s_maxlen = 1024;
+    writer.max_len = 1024;
+    let mut io = capture();
+    commit_one(&mut writer, &mut io, &[(2000, 7)], &[]);
+    let at = (JOURNAL_START as usize + 3) * BLOCK_SIZE;
+    let mut commit = CommitHeader::from_disk_bytes(&io.blocks[at..at + BLOCK_SIZE]);
+    assert_eq!(commit.h_header.h_blocktype, JBD2_BLOCKTYPE_COMMIT);
+    edit(&mut commit);
+    commit.to_disk_bytes(&mut io.blocks[at..at + BLOCK_SIZE]);
+    let mut replayer = system(0);
+    replayer.jbd2_super_block.s_feature_compat = JBD2_FEATURE_COMPAT_CHECKSUM;
+    replayer.jbd2_super_block.s_maxlen = 1024;
+    replayer.jbd2_super_block.s_start = 1;
+    replayer.jbd2_super_block.s_sequence = 1;
+    let status = replayer.replay_with_mapping(&mut io, &[]);
+    let op = status
+        .failure()
+        .map(|failure| match failure.cause().context() {
+            Some(ErrorContext::Operation { op }) => op,
+            _ => "none",
+        });
+    (op, home(&io, 2000))
+}
+
+#[test]
+fn a_compat_checksum_must_match_in_type_size_and_value_unless_the_whole_field_is_unused() {
+    assert_eq!(compat_replay(|_| {}), (None, 7));
+    // The field may be left entirely unused.
+    assert_eq!(
+        compat_replay(|c| {
+            c.h_chksum_type = 0;
+            c.h_chksum_size = 0;
+            c.h_chksum[0] = 0;
+        }),
+        (None, 7)
+    );
+    let bad = Some("jbd2:replay_compat_checksum");
+    assert_eq!(compat_replay(|c| c.h_chksum[0] ^= 1), (bad, 0));
+    assert_eq!(compat_replay(|c| c.h_chksum_type = 0), (bad, 0));
+    assert_eq!(compat_replay(|c| c.h_chksum_size = 0), (bad, 0));
+    assert_eq!(compat_replay(|c| c.h_chksum_type = 9), (bad, 0));
+    assert_eq!(compat_replay(|c| c.h_chksum_size = 9), (bad, 0));
+    // Unused type and size with a stray value is not unused.
+    assert_eq!(
+        compat_replay(|c| {
+            c.h_chksum_type = 0;
+            c.h_chksum_size = 0;
+        }),
+        (bad, 0)
+    );
+    assert_eq!(
+        compat_replay(|c| {
+            c.h_chksum_type = 0;
+            c.h_chksum[0] = 0;
+        }),
+        (bad, 0)
+    );
+    assert_eq!(
+        compat_replay(|c| {
+            c.h_chksum_size = 0;
+            c.h_chksum[0] = 0;
+        }),
+        (bad, 0)
+    );
+}
+
+#[test]
+fn replay_failure_accessors_report_what_was_stored() {
+    let failure = ReplayFailure::at(
+        JournalReplayPhase::Scan,
+        Ext4Error::corrupted().with_operation("x"),
+        7,
+    );
+    assert_eq!(failure.restart_rel(), Some(7));
+    assert!(failure.persistence_error().is_none());
+    let failure = failure.with_persistence_error(Ext4Error::busy());
+    assert!(failure.persistence_error().is_some());
+}
+
+#[test]
+fn a_commit_block_with_the_wrong_magic_or_sequence_ends_the_scan_without_replaying() {
+    assert_eq!(compat_replay(|c| c.h_header.h_magic ^= 1), (None, 0));
+    assert_eq!(compat_replay(|c| c.h_header.h_sequence = 99), (None, 0));
+}
+
+#[test]
+fn a_version_three_commit_block_may_carry_the_checksum_of_its_header_alone() {
+    let features = JBD2_FEATURE_INCOMPAT_CSUM_V3;
+    let mut writer = system(features);
+    writer.jbd2_super_block.s_maxlen = 1024;
+    writer.max_len = 1024;
+    let mut io = capture();
+    commit_one(&mut writer, &mut io, &[(2000, 7)], &[]);
+    // Stray bytes after the header change the full checksum but not the
+    // header-only one that the block carries.
+    let at = (JOURNAL_START as usize + 3) * BLOCK_SIZE;
+    io.blocks[at + 200] = 1;
+    let mut replayer = system(features);
+    replayer.jbd2_super_block.s_maxlen = 1024;
+    replayer.jbd2_super_block.s_start = 1;
+    replayer.jbd2_super_block.s_sequence = 1;
+    assert!(
+        replayer
+            .replay_with_mapping(&mut io, &[])
+            .failure()
+            .is_none()
+    );
+    assert_eq!(home(&io, 2000), 7);
+}
+
+#[test]
+fn replay_accepts_a_block_exactly_as_large_as_the_commit_header_and_refuses_a_smaller_one() {
+    // The scan accepts the exact size and then stops at the first block; the
+    // follow-up superblock write is what refuses a block this small.
+    for (size, expected) in [
+        (JBD2_COMMIT_HEADER_SIZE, "jbd2:small_block"),
+        (JBD2_COMMIT_HEADER_SIZE - 1, "jbd2:replay_block_size"),
+    ] {
+        let mut replayer = system(0);
+        replayer.jbd2_super_block.s_maxlen = 16;
+        replayer.jbd2_super_block.s_start = 1;
+        replayer.jbd2_super_block.s_sequence = 1;
+        let failure = replayer
+            .replay_with_mapping(&mut SizedIo(size), &[])
+            .failure()
+            .expect("a block this small cannot be replayed");
+        assert_eq!(
+            operation(Err::<(), _>(failure.cause())),
+            expected,
+            "size {size}"
+        );
+    }
+}
+
+#[test]
+fn committing_an_empty_transaction_does_nothing_and_a_full_one_commits() {
+    let time = Jbd2CommitTimestamp::try_from(Ext4Timestamp { sec: 1, nsec: 0 }).unwrap();
+    let mut io = capture();
+    let mut writer = system(0);
+    assert!(
+        writer
+            .commit_transaction_with_mapping(&mut io, &[], time)
+            .unwrap()
+    );
+    assert_eq!(writer.checkpoint_transactions.len(), 1);
+    writer.running_transaction.updates.clear();
+    assert!(
+        !writer
+            .commit_transaction_with_mapping(&mut io, &[], time)
+            .unwrap()
+    );
+    assert_eq!(writer.checkpoint_transactions.len(), 1);
+}
+
+mod mounted {
+    use super::*;
+    use crate::{
+        BLOCK_SIZE as FS_BLOCK_SIZE, DeviceCapabilities, DeviceGeometry, Ext4FileSystem,
+        Ext4Timestamp as Timestamp, SectorId, mkfs, runtime::Clock,
+    };
+
+    struct MemoryDevice {
+        bytes: Vec<u8>,
+    }
+
+    impl BlockIo for MemoryDevice {
+        fn write(&mut self, buffer: &[u8], sector: SectorId, _count: u32) -> Ext4Result<()> {
+            let start = sector.as_usize()? * FS_BLOCK_SIZE;
+            let end = start + buffer.len();
+            self.bytes
+                .get_mut(start..end)
+                .ok_or_else(Ext4Error::io)?
+                .copy_from_slice(buffer);
+            Ok(())
+        }
+
+        fn read(&mut self, buffer: &mut [u8], sector: SectorId, _count: u32) -> Ext4Result<()> {
+            let start = sector.as_usize()? * FS_BLOCK_SIZE;
+            let end = start + buffer.len();
+            buffer.copy_from_slice(self.bytes.get(start..end).ok_or_else(Ext4Error::io)?);
+            Ok(())
+        }
+
+        fn geometry(&self) -> DeviceGeometry {
+            DeviceGeometry::new(
+                FS_BLOCK_SIZE as u32,
+                (self.bytes.len() / FS_BLOCK_SIZE) as u64,
+            )
+        }
+
+        fn capabilities(&self) -> DeviceCapabilities {
+            DeviceCapabilities {
+                flush: true,
+                ..DeviceCapabilities::default()
+            }
+        }
+
+        fn flush(&mut self) -> Ext4Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Clock for MemoryDevice {
+        fn now(&self) -> Ext4Result<Timestamp> {
+            Ok(Timestamp::new(1_700_000_000, 0))
+        }
+    }
+
+    fn mounted() -> (Jbd2Dev<MemoryDevice>, Ext4FileSystem) {
+        let device = MemoryDevice {
+            bytes: vec![0; 16 * 1024 * FS_BLOCK_SIZE],
+        };
+        let mut journal = Jbd2Dev::initial_jbd2dev(0, device, true);
+        mkfs(&mut journal).expect("mkfs");
+        let filesystem = Ext4FileSystem::mount(&mut journal).expect("mount");
+        (journal, filesystem)
+    }
+
+    #[test]
+    fn the_created_journal_has_a_described_superblock_and_an_empty_log() {
+        let (mut journal, mut filesystem) = mounted();
+        let first = filesystem.journal_sb_block_start.expect("journal mapped");
+        let data = filesystem
+            .datablock_cache
+            .get_or_load(&mut journal, first)
+            .unwrap()
+            .data
+            .clone();
+        let superblock = JournalSuperBlock::decode_checked(&data).unwrap();
+        assert_eq!(superblock.s_maxlen, CREATED_JOURNAL_BLOCK_COUNT);
+        assert_eq!(superblock.s_first, 1);
+        assert_eq!(superblock.s_start, 0);
+        assert_eq!(superblock.s_sequence, 1);
+        assert_eq!(superblock.s_blocksize as usize, FS_BLOCK_SIZE);
+        assert_eq!(superblock.s_uuid, filesystem.superblock.s_uuid);
+        assert_ne!(
+            superblock.s_feature_incompat & JBD2_FEATURE_INCOMPAT_REVOKE,
+            0
+        );
+        let has_64bit = filesystem
+            .superblock
+            .has_feature_incompat(crate::superblock::Ext4Superblock::EXT4_FEATURE_INCOMPAT_64BIT);
+        assert_eq!(
+            superblock.s_feature_incompat & JBD2_FEATURE_INCOMPAT_64BIT != 0,
+            has_64bit
+        );
+        let checksummed = ext4_superblock_has_metadata_csum(&filesystem.superblock);
+        assert_eq!(
+            superblock.s_feature_incompat & JBD2_FEATURE_INCOMPAT_CSUM_V3 != 0,
+            checksummed
+        );
+        assert_eq!(
+            superblock.s_checksum_type,
+            if checksummed { JBD2_CRC32C_CHKSUM } else { 0 }
+        );
+        let inode = filesystem
+            .get_inode_by_num(
+                &mut journal,
+                InodeNumber::new(JOURNAL_FILE_INODE as u32).unwrap(),
+            )
+            .unwrap();
+        let size = u64::from(CREATED_JOURNAL_BLOCK_COUNT) * FS_BLOCK_SIZE as u64;
+        assert_eq!(u64::from(inode.i_size_lo), size);
+        assert_eq!(u64::from(inode.i_blocks_lo), size / 512);
+        assert_eq!(inode.i_links_count, 1);
+        assert_eq!(inode.i_mode & Ext4Inode::S_IFREG, Ext4Inode::S_IFREG);
+        assert_eq!(inode.i_mode & 0o777, 0o600);
+        // Blocks the log has not reached start clean.
+        let mut block = vec![0xffu8; FS_BLOCK_SIZE];
+        for offset in [200u32, 1000, CREATED_JOURNAL_BLOCK_COUNT - 1] {
+            journal
+                .read_blocks(&mut block, first.checked_add(offset).unwrap(), 1)
+                .unwrap();
+            assert!(block.iter().all(|byte| *byte == 0), "block {offset}");
+        }
+    }
+
+    #[test]
+    fn zeroing_block_runs_clears_each_run_and_leaves_the_gaps() {
+        let (mut journal, _filesystem) = mounted();
+        let junk = vec![0xaau8; FS_BLOCK_SIZE];
+        for block in 14_000u64..14_016 {
+            journal
+                .write_blocks_durable(&junk, AbsoluteBN::new(block), 1)
+                .unwrap();
+        }
+        let blocks: Vec<AbsoluteBN> = [14_000u64, 14_001, 14_002, 14_010, 14_011]
+            .iter()
+            .map(|block| AbsoluteBN::new(*block))
+            .collect();
+        zero_allocated_block_runs(&mut journal, &blocks).expect("zero");
+        let mut data = vec![0u8; FS_BLOCK_SIZE];
+        for block in 14_000u64..14_016 {
+            journal
+                .read_blocks(&mut data, AbsoluteBN::new(block), 1)
+                .unwrap();
+            let zeroed = [14_000, 14_001, 14_002, 14_010, 14_011].contains(&block);
+            assert_eq!(data[0], if zeroed { 0 } else { 0xaa }, "block {block}");
+        }
+        zero_allocated_block_runs(&mut journal, &[]).expect("an empty list is a no-op");
+    }
+}
