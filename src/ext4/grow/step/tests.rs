@@ -129,6 +129,20 @@ fn a_partial_tail_is_extended_alone_and_whole_groups_are_batched() {
 }
 
 #[test]
+fn a_target_that_does_not_lie_beyond_the_geometry_is_refused() {
+    let (_journal, fs) = mounted(12000, 30000);
+    for target in [12000, 11999] {
+        assert_eq!(
+            operation(next_geometry(&fs.superblock, target, 1_000_000)),
+            "grow:target_not_beyond_geometry"
+        );
+    }
+    // One block more is a step.
+    let next = next_geometry(&fs.superblock, 12001, 1_000_000).unwrap();
+    assert_eq!(next.blocks_count(), 12001);
+}
+
+#[test]
 fn the_tail_group_is_found_from_the_first_data_block() {
     let (_journal, fs) = mounted(12000, 30000);
     // Blocks 1..8192 are 8191 data blocks: group 0 is still a partial tail.
