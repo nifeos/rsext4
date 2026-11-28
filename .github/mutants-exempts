@@ -58,3 +58,8 @@ src/jbd2/jbd2.rs:1133 # the set is only extended to filter transactions that are
 src/jbd2/jbd2.rs:1161 # the metadata and forced unit access flags share no bits, so `|` and `^` are the same value
 src/jbd2/jbd2.rs:1453 # the buffer only reserves capacity and every caller extends it, so an empty buffer gives the same result as long as allocation succeeds
 src/jbd2/jbd2.rs:1862 # the file type bits and the permission bits share no bits, so `|` and `^` are the same value
+src/file/delete.rs:506 # the record at the wanted offset is handled just above, so an offset equal to it never reaches this test and `>=` is the same as `>`; the `==` variant is killed by the corrupt-record-after-the-offset test
+src/file/delete.rs:795 # every removed child directory later lowers its parent's link count again and the parent is freed last with its count cleared, so skipping this early adjustment leaves no visible difference
+src/file/delete.rs:872 # the rounded minimum length is only compared against a record length that the alignment and name-fit checks have already bounded, so a wrong rounding mask cannot change a result
+src/file/delete.rs:885 # a record longer than the block is always also caught by the last-valid-start check on the next line, and a record shorter than its minimum by the alignment or name-fit checks, so neither half of this pair can decide alone
+src/file/delete.rs:937 # the checksum verifier rejects a block without the tail, so this earlier tail test never decides alone
