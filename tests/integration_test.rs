@@ -1523,9 +1523,10 @@ fn read_file_refuses_a_recorded_size_it_cannot_reserve_and_reads_a_sparse_tail()
         .unwrap()
         .expect("file exists");
 
-    // Past the address space, the buffer's size is refused before the
-    // allocator is asked; below it, no allocator holds four exbibytes, so the
-    // fallible reservation fails. Either way the call returns an error.
+    // A buffer whose size overflows `usize` is refused before the allocator
+    // is asked. Below that, no allocator holds four exbibytes, and none
+    // reserves more than `isize::MAX`, so the fallible reservation fails.
+    // Either way the call returns an error.
     let no_memory = if cfg!(target_pointer_width = "64") {
         Ext4ErrorKind::NoMemory
     } else {
@@ -1533,7 +1534,7 @@ fn read_file_refuses_a_recorded_size_it_cannot_reserve_and_reads_a_sparse_tail()
     };
     for (recorded_size, expected) in [
         (u64::MAX, Ext4ErrorKind::FileTooLarge),
-        (1 << 63, Ext4ErrorKind::FileTooLarge),
+        (1 << 63, no_memory),
         (1 << 62, no_memory),
     ] {
         fs.modify_inode(&mut jbd2_dev, file, |inode| inode.set_size(recorded_size))

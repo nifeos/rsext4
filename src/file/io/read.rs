@@ -182,7 +182,6 @@ fn read_file_follow<B: BlockIo>(
     // reallocate.
     let buffer_bytes = total_blocks
         .checked_mul(block_bytes)
-        .filter(|&bytes| bytes <= isize::MAX as usize)
         .ok_or_else(|| Ext4Error::file_too_large().with_operation("read_file:buffer"))?;
     let mut buf = Vec::new();
     buf.try_reserve_exact(buffer_bytes)
