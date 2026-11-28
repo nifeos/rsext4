@@ -17,6 +17,10 @@ use rsext4::{
     truncate_inode, write_file, zero_range_inode,
 };
 
+/// The most bytes a test accepts from `read_file`: larger than any file these
+/// tests write, so only a recorded size that a test sets on purpose reaches it.
+const MAXIMUM_READ_BYTES: usize = 1 << 20;
+
 struct MemoryDevice {
     bytes: Vec<u8>,
     now: Cell<i64>,
@@ -175,8 +179,13 @@ fn partial_write_converts_only_the_written_unwritten_block() {
         .modify_inode(&mut journal, inode_number, |on_disk| *on_disk = inode)
         .expect("inode publication failed");
 
-    let before =
-        read_file(&mut journal, &mut filesystem, "/preallocated").expect("unwritten read failed");
+    let before = read_file(
+        &mut journal,
+        &mut filesystem,
+        "/preallocated",
+        MAXIMUM_READ_BYTES,
+    )
+    .expect("unwritten read failed");
     assert!(before.iter().all(|byte| *byte == 0));
     let free_blocks_before_write = filesystem.superblock.free_blocks_count();
     let blocks_before_write = inode.i_blocks_lo;
@@ -226,8 +235,13 @@ fn partial_write_converts_only_the_written_unwritten_block() {
     assert_eq!(right.len(), 1);
     assert_eq!(right.start_block(), third.raw());
 
-    let after = read_file(&mut journal, &mut filesystem, "/preallocated")
-        .expect("post-conversion read failed");
+    let after = read_file(
+        &mut journal,
+        &mut filesystem,
+        "/preallocated",
+        MAXIMUM_READ_BYTES,
+    )
+    .expect("post-conversion read failed");
     assert!(after[..BLOCK_SIZE + 123].iter().all(|byte| *byte == 0));
     assert_eq!(
         &after[BLOCK_SIZE + 123..BLOCK_SIZE + 123 + payload.len()],
@@ -336,8 +350,13 @@ fn preallocation_reserves_unwritten_blocks_and_honors_keep_size() {
         3 * BLOCK_SIZE as u64,
     )
     .expect("sparse size publication failed");
-    let zeros =
-        read_file(&mut journal, &mut filesystem, "/reserve").expect("reserved extent read failed");
+    let zeros = read_file(
+        &mut journal,
+        &mut filesystem,
+        "/reserve",
+        MAXIMUM_READ_BYTES,
+    )
+    .expect("reserved extent read failed");
     assert_eq!(zeros.len(), 3 * BLOCK_SIZE);
     assert!(zeros.iter().all(|byte| *byte == 0));
 
@@ -356,8 +375,13 @@ fn preallocation_reserves_unwritten_blocks_and_honors_keep_size() {
     assert_eq!(inode.size(), 6 * BLOCK_SIZE as u64);
     assert_eq!(inode.i_blocks_lo, (4 * BLOCK_SIZE / 512) as u32);
     assert_eq!(filesystem.superblock.free_blocks_count(), free_before - 4);
-    let zeros = read_file(&mut journal, &mut filesystem, "/reserve")
-        .expect("extended preallocation read failed");
+    let zeros = read_file(
+        &mut journal,
+        &mut filesystem,
+        "/reserve",
+        MAXIMUM_READ_BYTES,
+    )
+    .expect("extended preallocation read failed");
     assert_eq!(zeros.len(), 6 * BLOCK_SIZE);
     assert!(zeros.iter().all(|byte| *byte == 0));
 }
@@ -1365,8 +1389,8 @@ fn punch_hole_zeros_partial_edges_and_releases_complete_blocks() {
             .expect("punched mapping lookup failed"),
         ExtentBlockMapping::Hole
     );
-    let after =
-        read_file(&mut journal, &mut filesystem, "/punch").expect("punched file read failed");
+    let after = read_file(&mut journal, &mut filesystem, "/punch", MAXIMUM_READ_BYTES)
+        .expect("punched file read failed");
     let end = usize::try_from(offset + len).expect("test range fits usize");
     let start = usize::try_from(offset).expect("test range fits usize");
     assert_eq!(&after[..start], &original[..start]);
@@ -1416,7 +1440,8 @@ fn zero_range_zeros_partial_edges_but_keeps_unwritten_allocation() {
             .expect("zeroed mapping lookup failed"),
         ExtentBlockMapping::Unwritten(_)
     ));
-    let after = read_file(&mut journal, &mut filesystem, "/zero").expect("zeroed file read failed");
+    let after = read_file(&mut journal, &mut filesystem, "/zero", MAXIMUM_READ_BYTES)
+        .expect("zeroed file read failed");
     let end = usize::try_from(offset + len).expect("test range fits usize");
     let start = usize::try_from(offset).expect("test range fits usize");
     assert_eq!(&after[..start], &original[..start]);
@@ -1475,8 +1500,13 @@ fn punch_hole_prunes_a_finite_range_across_legacy_direct_and_indirect_blocks() {
     assert_eq!(inode.i_block[11], 0);
     assert_ne!(inode.i_block[12], 0, "remaining block 14 needs the root");
     assert_eq!(filesystem.superblock.free_blocks_count(), free_before + 4);
-    let after = read_file(&mut journal, &mut filesystem, "/legacy-punch")
-        .expect("legacy punched read failed");
+    let after = read_file(
+        &mut journal,
+        &mut filesystem,
+        "/legacy-punch",
+        MAXIMUM_READ_BYTES,
+    )
+    .expect("legacy punched read failed");
     assert_eq!(&after[..10 * BLOCK_SIZE], &original[..10 * BLOCK_SIZE]);
     assert!(
         after[10 * BLOCK_SIZE..14 * BLOCK_SIZE]
@@ -1567,8 +1597,13 @@ fn collapse_range_removes_blocks_and_shifts_later_extents_left() {
     )
     .expect("collapse range failed");
 
-    let after =
-        read_file(&mut journal, &mut filesystem, "/collapse").expect("collapsed file read failed");
+    let after = read_file(
+        &mut journal,
+        &mut filesystem,
+        "/collapse",
+        MAXIMUM_READ_BYTES,
+    )
+    .expect("collapsed file read failed");
     assert_eq!(after.len(), 3 * BLOCK_SIZE);
     assert_eq!(&after[..BLOCK_SIZE], &original[..BLOCK_SIZE]);
     assert_eq!(
@@ -1610,8 +1645,8 @@ fn insert_range_creates_a_hole_and_shifts_later_extents_right() {
     )
     .expect("insert range failed");
 
-    let after =
-        read_file(&mut journal, &mut filesystem, "/insert").expect("inserted file read failed");
+    let after = read_file(&mut journal, &mut filesystem, "/insert", MAXIMUM_READ_BYTES)
+        .expect("inserted file read failed");
     assert_eq!(after.len(), 4 * BLOCK_SIZE);
     assert_eq!(&after[..BLOCK_SIZE], &original[..BLOCK_SIZE]);
     assert!(

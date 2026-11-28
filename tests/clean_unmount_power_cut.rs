@@ -15,6 +15,10 @@ use std::{cell::RefCell, rc::Rc};
 
 use rsext4::{endian::DiskFormat, superblock::Ext4Superblock, *};
 
+/// The most bytes a test accepts from `read_file`: larger than any file these
+/// tests write, so only a recorded size that a test sets on purpose reaches it.
+const MAXIMUM_READ_BYTES: usize = 1 << 20;
+
 const DEVICE_BYTES: usize = 64 * 1024 * 1024;
 const FILE_PATH: &str = "/clean-order";
 const FILE_CONTENTS: &[u8] = b"persisted";
@@ -194,7 +198,7 @@ fn power_cut_during_unmount_never_clears_recover_before_the_journal_start() {
         let mut journal = Jbd2Dev::initial_jbd2dev(0, device, true);
         let mut filesystem = Ext4FileSystem::mount(&mut journal)
             .unwrap_or_else(|error| panic!("cut {cut}: mount after the cut failed: {error:?}"));
-        match read_file(&mut journal, &mut filesystem, FILE_PATH) {
+        match read_file(&mut journal, &mut filesystem, FILE_PATH, MAXIMUM_READ_BYTES) {
             Ok(contents) => assert_eq!(contents, FILE_CONTENTS, "cut {cut}: file contents"),
             Err(error) => assert_eq!(
                 error.kind(),

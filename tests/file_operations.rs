@@ -8,6 +8,10 @@
 
 use std::{cell::Cell, rc::Rc};
 
+/// The most bytes a test accepts from `read_file`: larger than any file these
+/// tests write, so only a recorded size that a test sets on purpose reaches it.
+const MAXIMUM_READ_BYTES: usize = 32 << 20;
+
 #[path = "file_operations/read_plan.rs"]
 mod read_plan;
 
@@ -156,8 +160,13 @@ mod file_functional_tests {
         )
         .expect("mkfile failed");
 
-        let read_data =
-            read_file(&mut jbd2_dev, &mut fs, "/testdir/testfile").expect("read_file failed");
+        let read_data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/testdir/testfile",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read_file failed");
         assert_eq!(read_data, test_data.to_vec());
 
         // Overwrite the prefix and check that the modified region is visible.
@@ -165,8 +174,13 @@ mod file_functional_tests {
         write_file(&mut jbd2_dev, &mut fs, "/testdir/testfile", 0, new_data)
             .expect("write_file failed");
 
-        let modified_data =
-            read_file(&mut jbd2_dev, &mut fs, "/testdir/testfile").expect("read_file failed");
+        let modified_data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/testdir/testfile",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read_file failed");
 
         // The current implementation does not auto-truncate when the replacement
         // payload is shorter, so the suffix from the old file remains.
@@ -318,8 +332,13 @@ mod file_functional_tests {
         truncate(&mut jbd2_dev, &mut fs, "/truncatetest/truncate_file", 10)
             .expect("truncate failed");
 
-        let truncated_data = read_file(&mut jbd2_dev, &mut fs, "/truncatetest/truncate_file")
-            .expect("read_file failed");
+        let truncated_data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/truncatetest/truncate_file",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read_file failed");
         assert_eq!(truncated_data, Vec::from(&original_data[..10]));
 
         // Grow the file again. Bytes hidden by the previous shrink must not
@@ -327,8 +346,13 @@ mod file_functional_tests {
         truncate(&mut jbd2_dev, &mut fs, "/truncatetest/truncate_file", 20)
             .expect("truncate expand failed");
 
-        let expanded_data = read_file(&mut jbd2_dev, &mut fs, "/truncatetest/truncate_file")
-            .expect("read_file failed");
+        let expanded_data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/truncatetest/truncate_file",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read_file failed");
 
         let mut expected = Vec::from(&original_data[..10]);
         expected.resize(20, 0);
@@ -369,13 +393,23 @@ mod file_functional_tests {
         .expect("rename failed");
 
         // The old path must disappear after rename.
-        let old_err = read_file(&mut jbd2_dev, &mut fs, "/renametest/oldname")
-            .expect_err("old path should not exist");
+        let old_err = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/renametest/oldname",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect_err("old path should not exist");
         assert_eq!(old_err.kind(), Ext4ErrorKind::NotFound);
 
         // The new path should expose the exact original content.
-        let new_data =
-            read_file(&mut jbd2_dev, &mut fs, "/renametest/newname").expect("read_file failed");
+        let new_data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/renametest/newname",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read_file failed");
         assert_eq!(new_data, test_data.to_vec());
 
         // Renaming into the same directory can convert its linear block into
@@ -397,13 +431,13 @@ mod file_functional_tests {
             .expect("rename must survive relocation of its source record");
             assert!(outcome.replaced.is_none());
             assert_eq!(
-                read_file(&mut jbd2_dev, &mut fs, &source)
+                read_file(&mut jbd2_dev, &mut fs, &source, MAXIMUM_READ_BYTES)
                     .expect_err("source name must disappear after directory growth")
                     .kind(),
                 Ext4ErrorKind::NotFound,
             );
             assert_eq!(
-                read_file(&mut jbd2_dev, &mut fs, &destination)
+                read_file(&mut jbd2_dev, &mut fs, &destination, MAXIMUM_READ_BYTES)
                     .expect("read relocated rename destination"),
                 contents,
             );
@@ -436,7 +470,7 @@ mod file_functional_tests {
         )
         .expect("same-path rename must succeed");
 
-        let data = read_file(&mut jbd2_dev, &mut fs, "/same-name")
+        let data = read_file(&mut jbd2_dev, &mut fs, "/same-name", MAXIMUM_READ_BYTES)
             .expect("same-path rename removed the entry");
         assert_eq!(data, contents);
     }
@@ -474,8 +508,13 @@ mod file_functional_tests {
         )
         .expect("write_file failed");
 
-        let data =
-            read_file(&mut jbd2_dev, &mut fs, "/large-overwrite.bin").expect("read_file failed");
+        let data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/large-overwrite.bin",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read_file failed");
         assert_eq!(data.len(), original_len);
         assert!(data[..overwrite_offset].iter().all(|&byte| byte == 0x31));
         assert!(
@@ -529,11 +568,17 @@ mod file_functional_tests {
         reap_unlinked_inode(&mut fs, &mut jbd2_dev, replaced.inode)
             .expect("replacement target reap failed");
 
-        let data =
-            read_file(&mut jbd2_dev, &mut fs, "/tmp/original.txt").expect("read_file failed");
+        let data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/tmp/original.txt",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read_file failed");
         assert_eq!(data, updated.to_vec());
 
-        let temp_err = read_file(&mut jbd2_dev, &mut fs, "/tmp/temp.txt").expect_err("temp gone");
+        let temp_err = read_file(&mut jbd2_dev, &mut fs, "/tmp/temp.txt", MAXIMUM_READ_BYTES)
+            .expect_err("temp gone");
         assert_eq!(temp_err.kind(), Ext4ErrorKind::NotFound);
 
         umount(fs, &mut jbd2_dev).expect("umount failed");
@@ -567,8 +612,13 @@ mod file_functional_tests {
         )
         .expect("cross-dir rename failed");
 
-        let data = read_file(&mut jbd2_dev, &mut fs, "/aofdir/appendonly.aof.1.base.rdb")
-            .expect("read dest failed");
+        let data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/aofdir/appendonly.aof.1.base.rdb",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read dest failed");
         assert_eq!(data, b"RDB-BASE-DATA\n");
 
         umount(fs, &mut jbd2_dev).expect("umount failed");
@@ -643,8 +693,13 @@ mod file_functional_tests {
                 .expect("failed rename must retain its source name");
         assert_eq!(remounted_source, source_number);
         assert_eq!(
-            read_file(&mut remount_dev, &mut remounted, "/old-parent/source")
-                .expect("retained source must stay readable"),
+            read_file(
+                &mut remount_dev,
+                &mut remounted,
+                "/old-parent/source",
+                MAXIMUM_READ_BYTES
+            )
+            .expect("retained source must stay readable"),
             payload
         );
         assert!(
@@ -740,13 +795,23 @@ mod file_functional_tests {
         assert_eq!(source_after, source_number);
         assert_eq!(target_after, target_number);
         assert_eq!(
-            read_file(&mut remount_dev, &mut remounted, "/exchange-old/source")
-                .expect("source must stay readable"),
+            read_file(
+                &mut remount_dev,
+                &mut remounted,
+                "/exchange-old/source",
+                MAXIMUM_READ_BYTES
+            )
+            .expect("source must stay readable"),
             b"source payload"
         );
         assert_eq!(
-            read_file(&mut remount_dev, &mut remounted, "/exchange-new/target")
-                .expect("target must stay readable"),
+            read_file(
+                &mut remount_dev,
+                &mut remounted,
+                "/exchange-new/target",
+                MAXIMUM_READ_BYTES
+            )
+            .expect("target must stay readable"),
             b"target payload"
         );
     }
@@ -825,13 +890,23 @@ mod file_functional_tests {
         assert_eq!(target_inode_after.i_links_count, target_inode.i_links_count);
         assert_eq!(remounted.superblock.s_last_orphan, orphan_head_before);
         assert_eq!(
-            read_file(&mut remount_dev, &mut remounted, "/replace-old/source")
-                .expect("source must stay readable"),
+            read_file(
+                &mut remount_dev,
+                &mut remounted,
+                "/replace-old/source",
+                MAXIMUM_READ_BYTES
+            )
+            .expect("source must stay readable"),
             b"replacement source"
         );
         assert_eq!(
-            read_file(&mut remount_dev, &mut remounted, "/replace-new/target")
-                .expect("target must stay readable"),
+            read_file(
+                &mut remount_dev,
+                &mut remounted,
+                "/replace-new/target",
+                MAXIMUM_READ_BYTES
+            )
+            .expect("target must stay readable"),
             b"original target"
         );
     }
@@ -962,13 +1037,23 @@ mod file_functional_tests {
         .expect("mv failed");
 
         // The source entry should be removed after the move.
-        let old_err = read_file(&mut jbd2_dev, &mut fs, "/sourcedir/movefile")
-            .expect_err("old path should not exist");
+        let old_err = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/sourcedir/movefile",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect_err("old path should not exist");
         assert_eq!(old_err.kind(), Ext4ErrorKind::NotFound);
 
         // The destination should still resolve to the original file contents.
-        let new_data =
-            read_file(&mut jbd2_dev, &mut fs, "/destdir/movedfile").expect("read_file failed");
+        let new_data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/destdir/movedfile",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read_file failed");
         assert_eq!(new_data, test_data.to_vec());
 
         umount(fs, &mut jbd2_dev).expect("umount failed");
@@ -997,15 +1082,25 @@ mod file_functional_tests {
         .expect("mkfile failed");
 
         // Confirm the file exists before deletion.
-        let initial_data =
-            read_file(&mut jbd2_dev, &mut fs, "/deletetest/deletefile").expect("read_file failed");
+        let initial_data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/deletetest/deletefile",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read_file failed");
         assert_eq!(initial_data, test_data.to_vec());
 
         delete_file(&mut fs, &mut jbd2_dev, "/deletetest/deletefile").expect("delete failed");
 
         // The deleted path must no longer be readable.
-        let deleted_err = read_file(&mut jbd2_dev, &mut fs, "/deletetest/deletefile")
-            .expect_err("deleted path should not exist");
+        let deleted_err = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/deletetest/deletefile",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect_err("deleted path should not exist");
         assert_eq!(deleted_err.kind(), Ext4ErrorKind::NotFound);
 
         umount(fs, &mut jbd2_dev).expect("umount failed");
@@ -1080,7 +1175,13 @@ mod file_functional_tests {
             "fixture must exercise a reused physical block"
         );
         assert_eq!(
-            read_file(&mut jbd2_dev, &mut fs, "/new-incarnation").unwrap(),
+            read_file(
+                &mut jbd2_dev,
+                &mut fs,
+                "/new-incarnation",
+                MAXIMUM_READ_BYTES
+            )
+            .unwrap(),
             new_data
         );
     }
@@ -1115,11 +1216,21 @@ mod file_functional_tests {
         )
         .expect("hard-link creation failed");
 
-        let original_data =
-            read_file(&mut jbd2_dev, &mut fs, "/linktest/original").expect("read_file failed");
+        let original_data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/linktest/original",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read_file failed");
         assert_eq!(original_data, test_data.to_vec());
-        let linked_data =
-            read_file(&mut jbd2_dev, &mut fs, "/linktest/hardlink").expect("link read failed");
+        let linked_data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/linktest/hardlink",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("link read failed");
         assert_eq!(linked_data, test_data.to_vec());
         let (original_number, original_inode) =
             dir::get_inode_with_num(&mut fs, &mut jbd2_dev, "/linktest/original")
@@ -1392,8 +1503,13 @@ mod file_functional_tests {
                 .inode_num_already_allocated(&mut remount_dev, inode_number)
                 .expect("inode allocation lookup failed")
         );
-        let restored =
-            read_file(&mut remount_dev, &mut remounted, "/unlink-fault").expect("restored read");
+        let restored = read_file(
+            &mut remount_dev,
+            &mut remounted,
+            "/unlink-fault",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("restored read");
         assert_eq!(restored, contents);
     }
 
@@ -2014,7 +2130,13 @@ mod file_functional_tests {
             .expect("extent sparse growth must not allocate blocks");
 
         assert_eq!(fs.superblock.free_blocks_count(), free_blocks_before);
-        let data = read_file(&mut jbd2_dev, &mut fs, "/extent-sparse-grow").unwrap();
+        let data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/extent-sparse-grow",
+            MAXIMUM_READ_BYTES,
+        )
+        .unwrap();
         assert_eq!(data.len(), grown_size as usize);
         assert!(data.iter().all(|&byte| byte == 0));
     }
@@ -2058,7 +2180,13 @@ mod file_functional_tests {
         truncate_inode(&mut jbd2_dev, &mut fs, inode_number, 100)
             .expect("shrinking a depth-2 tree must succeed");
 
-        let data = read_file(&mut jbd2_dev, &mut fs, "/extent-depth-two").unwrap();
+        let data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/extent-depth-two",
+            MAXIMUM_READ_BYTES,
+        )
+        .unwrap();
         assert_eq!(data, vec![1u8; 100]);
         // 1499 data blocks and at least the second index node and its
         // leaves are free again.
@@ -2066,7 +2194,13 @@ mod file_functional_tests {
 
         umount(fs, &mut jbd2_dev).expect("unmount failed");
         let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("remount failed");
-        let data = read_file(&mut jbd2_dev, &mut fs, "/extent-depth-two").unwrap();
+        let data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/extent-depth-two",
+            MAXIMUM_READ_BYTES,
+        )
+        .unwrap();
         assert_eq!(data, vec![1u8; 100]);
     }
 
@@ -2098,7 +2232,13 @@ mod file_functional_tests {
             .expect_err("inode finalize failure must abort the extent truncate");
         assert_eq!(error.kind(), Ext4ErrorKind::Io);
 
-        let data = read_file(&mut jbd2_dev, &mut fs, "/extent-truncate-tail").unwrap();
+        let data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/extent-truncate-tail",
+            MAXIMUM_READ_BYTES,
+        )
+        .unwrap();
         assert_eq!(data.len(), original.len());
         let first_changed = data.iter().zip(&original).position(|(now, was)| now != was);
         assert_eq!(
@@ -2204,7 +2344,7 @@ mod file_functional_tests {
         })
         .unwrap();
 
-        let data = read_file(&mut jbd2_dev, &mut fs, "/legacy-sparse").unwrap();
+        let data = read_file(&mut jbd2_dev, &mut fs, "/legacy-sparse", MAXIMUM_READ_BYTES).unwrap();
         assert_eq!(data.len(), 3 * BLOCK_SIZE);
         assert!(data[..BLOCK_SIZE].iter().all(|&byte| byte == 0x31));
         assert!(
@@ -2267,7 +2407,13 @@ mod file_functional_tests {
             indirect_root.to_u32().unwrap(),
             "an overwrite must not replace the legacy root"
         );
-        let data = read_file(&mut jbd2_dev, &mut fs, "/legacy-overwrite").unwrap();
+        let data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/legacy-overwrite",
+            MAXIMUM_READ_BYTES,
+        )
+        .unwrap();
         assert_eq!(
             &data[12 * BLOCK_SIZE..12 * BLOCK_SIZE + payload.len()],
             payload
@@ -2752,8 +2898,13 @@ mod file_functional_tests {
         .expect("create_symbol_link failed");
 
         // The symlink path should resolve to the target file data.
-        let link_data =
-            read_file(&mut jbd2_dev, &mut fs, "/symlinktest/symlink").expect("read_file failed");
+        let link_data = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/symlinktest/symlink",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read_file failed");
         assert_eq!(link_data, test_data.to_vec());
 
         umount(fs, &mut jbd2_dev).expect("umount failed");
@@ -2770,8 +2921,13 @@ mod file_functional_tests {
         let mut fs = Ext4FileSystem::mount(&mut jbd2_dev).expect("mount failed");
 
         // Missing paths should return `ENOENT`.
-        let non_existent = read_file(&mut jbd2_dev, &mut fs, "/nonexistent/file")
-            .expect_err("missing file should fail");
+        let non_existent = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/nonexistent/file",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect_err("missing file should fail");
         assert_eq!(non_existent.kind(), Ext4ErrorKind::NotFound);
 
         // The current implementation auto-creates parent directories for `mkfile`.
@@ -2788,8 +2944,13 @@ mod file_functional_tests {
         delete_file(&mut fs, &mut jbd2_dev, "/nonexistent/file").expect("delete failed");
 
         // The path must still resolve as missing afterwards.
-        let non_existent = read_file(&mut jbd2_dev, &mut fs, "/nonexistent/file")
-            .expect_err("deleted file should fail");
+        let non_existent = read_file(
+            &mut jbd2_dev,
+            &mut fs,
+            "/nonexistent/file",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect_err("deleted file should fail");
         assert_eq!(non_existent.kind(), Ext4ErrorKind::NotFound);
 
         umount(fs, &mut jbd2_dev).expect("umount failed");
