@@ -52,3 +52,9 @@ src/jbd2/jbd2.rs:899 # the replay stops at the last tag flag, so tags left over 
 src/jbd2/jbd2.rs:982 # the tag capacity computed from the block size keeps the offset within the descriptor, so this check cannot fail
 src/jbd2/jbd2.rs:1076 # the metadata and forced unit access flags share no bits, so `|` and `^` are the same value
 src/jbd2/jbd2.rs:1082 # the committing transaction always ends in the journal flush phase with the current sequence, so neither half can be true on its own
+src/jbd2/jbd2.rs:611 # the metadata and forced unit access flags share no bits, so `|` and `^` are the same value
+src/jbd2/jbd2.rs:626 # the metadata and forced unit access flags share no bits, so `|` and `^` are the same value
+src/jbd2/jbd2.rs:1133 # the set is only extended to filter transactions that are still to be scanned, and after the oldest selected transaction there are none, so extending it one step earlier or later changes no write
+src/jbd2/jbd2.rs:1161 # the metadata and forced unit access flags share no bits, so `|` and `^` are the same value
+src/jbd2/jbd2.rs:1453 # the buffer only reserves capacity and every caller extends it, so an empty buffer gives the same result as long as allocation succeeds
+src/jbd2/jbd2.rs:1862 # the file type bits and the permission bits share no bits, so `|` and `^` are the same value
