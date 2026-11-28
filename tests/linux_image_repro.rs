@@ -17,6 +17,10 @@ use rsext4::{
     *,
 };
 
+/// The most bytes a test accepts from `read_file`: larger than any file these
+/// tests write, so only a recorded size that a test sets on purpose reaches it.
+const MAXIMUM_READ_BYTES: usize = 256 << 20;
+
 struct FileBlockDevice {
     file: File,
     block_size: u32,
@@ -686,8 +690,13 @@ fn linux_indexed_directory_lookup_uses_on_disk_htree_root() {
     let mut device = Jbd2Dev::initial_jbd2dev(0, device, true);
     let mut filesystem = Ext4FileSystem::mount(&mut device).expect("mount Linux HTree fixture");
     assert_eq!(
-        read_file(&mut device, &mut filesystem, "/indexed/entry-0799.bin")
-            .expect("lookup HTree leaf through rsext4"),
+        read_file(
+            &mut device,
+            &mut filesystem,
+            "/indexed/entry-0799.bin",
+            MAXIMUM_READ_BYTES
+        )
+        .expect("lookup HTree leaf through rsext4"),
         payload
     );
     umount(filesystem, &mut device).expect("unmount Linux HTree fixture");
@@ -1784,8 +1793,13 @@ fn linux_image_geometry_round_trip(filesystem_block_size: u32) {
         )
         .expect("rename geometry file");
         assert_eq!(
-            read_file(&mut dev, &mut fs, "/geometry/renamed.bin")
-                .expect("read renamed geometry file"),
+            read_file(
+                &mut dev,
+                &mut fs,
+                "/geometry/renamed.bin",
+                MAXIMUM_READ_BYTES
+            )
+            .expect("read renamed geometry file"),
             payload
         );
 
@@ -1850,7 +1864,8 @@ fn rsext4_mkfs_geometry_round_trip(filesystem_block_size: u32) {
         write_file(&mut dev, &mut fs, "/mkfs-geometry.bin", 0, &payload)
             .expect("write dynamic mkfs payload");
         assert_eq!(
-            read_file(&mut dev, &mut fs, "/mkfs-geometry.bin").expect("read dynamic mkfs payload"),
+            read_file(&mut dev, &mut fs, "/mkfs-geometry.bin", MAXIMUM_READ_BYTES)
+                .expect("read dynamic mkfs payload"),
             payload
         );
         umount(fs, &mut dev).expect("unmount rsext4-created image");
@@ -2839,7 +2854,8 @@ fn sparse_growth_round_trip(filesystem_block_size: u32) {
         let mut dev = Jbd2Dev::initial_jbd2dev(0, dev, true);
         let mut fs = Ext4FileSystem::mount(&mut dev).expect("remount sparse growth image");
         for (path, expected_size) in [(extent_path, extent_size), (legacy_path, legacy_size)] {
-            let data = read_file(&mut dev, &mut fs, path).expect("read remounted sparse file");
+            let data = read_file(&mut dev, &mut fs, path, MAXIMUM_READ_BYTES)
+                .expect("read remounted sparse file");
             assert_eq!(data.len(), expected_size as usize);
             assert!(data.iter().all(|&byte| byte == 0));
             let (_, inode) = dir::get_inode_with_num(&mut fs, &mut dev, path)
@@ -2921,7 +2937,8 @@ fn legacy_write_crosses_direct_single_boundary_and_remounts_cleanly() {
         let mut dev = Jbd2Dev::initial_jbd2dev(0, dev, true);
         let mut fs = Ext4FileSystem::mount(&mut dev).expect("remount legacy image");
         assert_eq!(
-            read_file(&mut dev, &mut fs, path).expect("read remounted legacy file"),
+            read_file(&mut dev, &mut fs, path, MAXIMUM_READ_BYTES)
+                .expect("read remounted legacy file"),
             expected
         );
         umount(fs, &mut dev).expect("umount remounted legacy image");
@@ -3276,7 +3293,8 @@ fn e2fsck_clean_after_exact_32768_block_extent() {
                 .expect("write contiguous extent block");
         }
 
-        let content = read_file(&mut dev, &mut fs, path).expect("read exact 32768-block file");
+        let content = read_file(&mut dev, &mut fs, path, MAXIMUM_READ_BYTES)
+            .expect("read exact 32768-block file");
         assert_eq!(content.len(), 32768 * BLOCK_SIZE);
         assert_eq!(&content[..16], &[0x5a; 16]);
         assert_eq!(
@@ -3403,8 +3421,13 @@ fn unwritten_preallocation_partial_write_remounts_and_passes_e2fsck() {
             b"linux-unwritten-parity",
         )
         .expect("write middle unwritten block");
-        let data = read_file(&mut device, &mut filesystem, "/preallocated")
-            .expect("read preallocated file");
+        let data = read_file(
+            &mut device,
+            &mut filesystem,
+            "/preallocated",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read preallocated file");
         assert_eq!(data.len(), 3 * BLOCK_SIZE);
         assert!(data[..BLOCK_SIZE + 97].iter().all(|byte| *byte == 0));
         assert_eq!(
@@ -3423,8 +3446,13 @@ fn unwritten_preallocation_partial_write_remounts_and_passes_e2fsck() {
         let mut device = Jbd2Dev::initial_jbd2dev(0, device, true);
         let mut filesystem =
             Ext4FileSystem::mount(&mut device).expect("remount preallocated image");
-        let data = read_file(&mut device, &mut filesystem, "/preallocated")
-            .expect("read remounted preallocated file");
+        let data = read_file(
+            &mut device,
+            &mut filesystem,
+            "/preallocated",
+            MAXIMUM_READ_BYTES,
+        )
+        .expect("read remounted preallocated file");
         assert_eq!(data.len(), 3 * BLOCK_SIZE);
         assert!(data[..BLOCK_SIZE + 97].iter().all(|byte| *byte == 0));
         assert_eq!(
@@ -3524,8 +3552,13 @@ fn linux_uninit_bg_image_mounts_writable_and_remains_clean() {
         let mut filesystem =
             Ext4FileSystem::mount(&mut device).expect("remount legacy uninit_bg image");
         assert_eq!(
-            read_file(&mut device, &mut filesystem, "/uninit-bg")
-                .expect("read file from remounted uninit_bg image"),
+            read_file(
+                &mut device,
+                &mut filesystem,
+                "/uninit-bg",
+                MAXIMUM_READ_BYTES
+            )
+            .expect("read file from remounted uninit_bg image"),
             b"linux-gdt-csum-parity"
         );
         umount(filesystem, &mut device).expect("unmount remounted uninit_bg image");
@@ -3583,8 +3616,13 @@ fn shifted_range_geometry_round_trip(filesystem_block_size: u32) {
         )
         .expect("insert one filesystem block");
         assert_eq!(
-            read_file(&mut device, &mut filesystem, "/shifted.bin")
-                .expect("read shifted-range result"),
+            read_file(
+                &mut device,
+                &mut filesystem,
+                "/shifted.bin",
+                MAXIMUM_READ_BYTES
+            )
+            .expect("read shifted-range result"),
             expected
         );
         umount(filesystem, &mut device).expect("unmount shifted-range image");
@@ -3600,8 +3638,13 @@ fn shifted_range_geometry_round_trip(filesystem_block_size: u32) {
         let mut filesystem =
             Ext4FileSystem::mount(&mut device).expect("remount shifted-range image");
         assert_eq!(
-            read_file(&mut device, &mut filesystem, "/shifted.bin")
-                .expect("read remounted shifted-range result"),
+            read_file(
+                &mut device,
+                &mut filesystem,
+                "/shifted.bin",
+                MAXIMUM_READ_BYTES
+            )
+            .expect("read remounted shifted-range result"),
             expected
         );
         umount(filesystem, &mut device).expect("unmount remounted shifted-range image");
@@ -3700,7 +3743,8 @@ fn shifted_ranges_rebuild_multiple_leaves_and_preserve_unwritten_state() {
         )
         .expect("insert sparse extent range");
         assert_eq!(
-            read_file(&mut device, &mut filesystem, path).expect("read multi-leaf result"),
+            read_file(&mut device, &mut filesystem, path, MAXIMUM_READ_BYTES)
+                .expect("read multi-leaf result"),
             expected
         );
 
@@ -3735,7 +3779,8 @@ fn shifted_ranges_rebuild_multiple_leaves_and_preserve_unwritten_state() {
         let mut device = Jbd2Dev::initial_jbd2dev(0, device, true);
         let mut filesystem = Ext4FileSystem::mount(&mut device).expect("remount multi-leaf image");
         assert_eq!(
-            read_file(&mut device, &mut filesystem, path).expect("read remounted multi-leaf file"),
+            read_file(&mut device, &mut filesystem, path, MAXIMUM_READ_BYTES)
+                .expect("read remounted multi-leaf file"),
             expected
         );
         let mut inode = filesystem

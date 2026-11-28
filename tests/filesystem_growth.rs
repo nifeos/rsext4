@@ -15,6 +15,10 @@ use std::{
 
 use rsext4::{runtime::GrowthEvent, *};
 
+/// The most bytes a test accepts from `read_file`: larger than any file these
+/// tests write, so only a recorded size that a test sets on purpose reaches it.
+const MAXIMUM_READ_BYTES: usize = 1 << 20;
+
 /// File-backed sector device with host durability support.
 struct Image(
     /// Open host image file owned for reads, writes, capacity queries and flushes.
@@ -307,7 +311,7 @@ fn growth_round_trip(block_size: &str, features: &str) {
         )
     );
     assert_eq!(
-        read_file(&mut device, &mut fs, "/keep").unwrap(),
+        read_file(&mut device, &mut fs, "/keep", MAXIMUM_READ_BYTES).unwrap(),
         b"preserve-native-growth"
     );
     mkfile(&mut device, &mut fs, "/new-space", None, None).unwrap();
@@ -350,7 +354,7 @@ fn growth_round_trip(block_size: &str, features: &str) {
     let mut device = open(&path);
     let mut fs = Ext4FileSystem::mount_growing(&mut device).unwrap();
     assert_eq!(
-        read_file(&mut device, &mut fs, "/keep").unwrap(),
+        read_file(&mut device, &mut fs, "/keep", MAXIMUM_READ_BYTES).unwrap(),
         b"preserve-native-growth"
     );
     umount(fs, &mut device).unwrap();
@@ -809,7 +813,7 @@ fn interrupted_growth_round_trip(features: &str, journal_pressure: bool) {
             "cut {cut}"
         );
         assert_eq!(
-            read_file(&mut device, &mut filesystem, "/keep").unwrap(),
+            read_file(&mut device, &mut filesystem, "/keep", MAXIMUM_READ_BYTES).unwrap(),
             b"stable-before-growth",
             "cut {cut}"
         );

@@ -142,9 +142,9 @@ exits 1. Each patch's opening lines name the check it expects to fail.
 
 ## BUGS
 
-- `read_file` reads a whole file into one buffer, holes included, as large as the file's recorded
-  size. A size that cannot be reserved is an error, but a reservation the allocator grants is then
-  filled, so a large sparse file can still use all the memory an overcommitting allocator grants.
+- `read_file` reads a whole file into one buffer, holes included, up to the bound its caller
+  passes. On a host whose allocator overcommits, the allocator can grant a reservation within that
+  bound and run out of memory only when the read fills it; the caller's bound is the control.
   `read_inode_data_into` reads a range into a caller's buffer instead.
 - The aarch64 hardware CRC32C path is little-endian only. On big-endian aarch64 the crate has only
   the table-driven path, and `enable_hardware_crc32c` has no effect, as on an architecture with no

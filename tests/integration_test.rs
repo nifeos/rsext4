@@ -20,6 +20,10 @@ use rsext4::{
     *,
 };
 
+/// The most bytes a test accepts from `read_file`: larger than any file these
+/// tests write, so only a recorded size that a test sets on purpose reaches it.
+const MAXIMUM_READ_BYTES: usize = 32 << 20;
+
 /// Simple in-memory block device used by the integration tests.
 struct TestBlockDevice {
     data: Vec<u8>,
@@ -1497,7 +1501,7 @@ fn symlink_whose_recorded_size_passes_one_block_is_refused_before_reading() {
         let refused = read_inode_data_into(&mut jbd2_dev, &mut fs, link, 0, &mut output)
             .expect_err("a symlink target never fills a whole block");
         assert_eq!(refused.kind(), Ext4ErrorKind::Corrupted);
-        let refused = read_file(&mut jbd2_dev, &mut fs, "/slow-link")
+        let refused = read_file(&mut jbd2_dev, &mut fs, "/slow-link", MAXIMUM_READ_BYTES)
             .expect_err("following the symlink reads its target first");
         assert_eq!(refused.kind(), Ext4ErrorKind::Corrupted);
     }
@@ -1512,7 +1516,7 @@ fn symlink_whose_recorded_size_passes_one_block_is_refused_before_reading() {
 }
 
 #[test]
-fn read_file_refuses_a_recorded_size_it_cannot_reserve_and_reads_a_sparse_tail() {
+fn read_file_refuses_a_recorded_size_past_the_bound_or_unreservable_and_reads_a_sparse_tail() {
     let device = TestBlockDevice::new(100 * 1024 * 1024);
     let mut jbd2_dev = Jbd2Dev::initial_jbd2dev(0, device, true);
 
@@ -1522,12 +1526,18 @@ fn read_file_refuses_a_recorded_size_it_cannot_reserve_and_reads_a_sparse_tail()
     let (file, _) = dir::get_inode_with_num(&mut fs, &mut jbd2_dev, "/sized")
         .unwrap()
         .expect("file exists");
+    let past_the_bound = Some(ErrorContext::Operation {
+        op: "read_file:maximum_bytes",
+    });
 
-    // A buffer whose size overflows `usize` is refused before the allocator
-    // is asked. Below that, no allocator holds four exbibytes, and none
-    // reserves more than `isize::MAX`, so the fallible reservation fails.
-    // Either way the call returns an error.
-    let no_memory = if cfg!(target_pointer_width = "64") {
+    // With a bound of `usize::MAX` on a 64-bit target, a buffer whose size
+    // overflows `usize` is refused before the allocator is asked. Below that,
+    // no allocator holds four exbibytes, and none reserves more than
+    // `isize::MAX`, so the fallible reservation fails. On a 32-bit target each
+    // of these sizes is past `usize::MAX`, so the bound refuses it. Either way
+    // the call returns an error.
+    let wide = cfg!(target_pointer_width = "64");
+    let no_memory = if wide {
         Ext4ErrorKind::NoMemory
     } else {
         Ext4ErrorKind::FileTooLarge
@@ -1539,18 +1549,36 @@ fn read_file_refuses_a_recorded_size_it_cannot_reserve_and_reads_a_sparse_tail()
     ] {
         fs.modify_inode(&mut jbd2_dev, file, |inode| inode.set_size(recorded_size))
             .unwrap();
-        let refused = read_file(&mut jbd2_dev, &mut fs, "/sized")
+        let refused = read_file(&mut jbd2_dev, &mut fs, "/sized", usize::MAX)
             .expect_err("no buffer of this size can be reserved");
         assert_eq!(refused.kind(), expected, "recorded size {recorded_size}");
+        assert_eq!(
+            refused.context() == past_the_bound,
+            !wide,
+            "recorded size {recorded_size} is past a bound of usize::MAX only on a 32-bit target"
+        );
+
+        // A caller's bound refuses the same size before the allocator is asked.
+        let refused = read_file(&mut jbd2_dev, &mut fs, "/sized", MAXIMUM_READ_BYTES)
+            .expect_err("the size is past the caller's bound");
+        assert_eq!(refused.kind(), Ext4ErrorKind::FileTooLarge);
+        assert_eq!(refused.context(), past_the_bound);
     }
 
     // A recorded size past the last mapped block is a hole, and reads as zeros.
+    // A bound one byte short refuses it, though the allocator would grant
+    // the buffer; a bound equal to the size reads it.
     let sparse_size = 3 * BLOCK_SIZE + 7;
     fs.modify_inode(&mut jbd2_dev, file, |inode| {
         inode.set_size(sparse_size as u64)
     })
     .unwrap();
-    let contents = read_file(&mut jbd2_dev, &mut fs, "/sized").expect("read sparse file");
+    let refused = read_file(&mut jbd2_dev, &mut fs, "/sized", sparse_size - 1)
+        .expect_err("the size is one byte past the caller's bound");
+    assert_eq!(refused.kind(), Ext4ErrorKind::FileTooLarge);
+    assert_eq!(refused.context(), past_the_bound);
+    let contents =
+        read_file(&mut jbd2_dev, &mut fs, "/sized", sparse_size).expect("read sparse file");
     assert_eq!(contents.len(), sparse_size);
     assert_eq!(&contents[..5], b"hello");
     assert!(contents[5..].iter().all(|&byte| byte == 0));
@@ -1572,7 +1600,13 @@ fn test_basic_mount_mkfs() {
     let data = b"Hello, world!";
     mkfile(&mut jbd2_dev, &mut fs, "/test/hello.txt", Some(data), None).expect("mkfile failed");
 
-    let read_data = read_file(&mut jbd2_dev, &mut fs, "/test/hello.txt").expect("read_file failed");
+    let read_data = read_file(
+        &mut jbd2_dev,
+        &mut fs,
+        "/test/hello.txt",
+        MAXIMUM_READ_BYTES,
+    )
+    .expect("read_file failed");
     assert_eq!(read_data, data.to_vec());
 
     umount(fs, &mut jbd2_dev).expect("umount failed");
@@ -1671,9 +1705,14 @@ fn test_file_operations() {
     .expect("write_file failed");
 
     // Append through the path-based helper and verify the concatenated content.
-    let file_len = read_file(&mut jbd2_dev, &mut fs, "/filetest/empty.txt")
-        .expect("read_file failed")
-        .len();
+    let file_len = read_file(
+        &mut jbd2_dev,
+        &mut fs,
+        "/filetest/empty.txt",
+        MAXIMUM_READ_BYTES,
+    )
+    .expect("read_file failed")
+    .len();
     write_file(
         &mut jbd2_dev,
         &mut fs,
@@ -1683,7 +1722,13 @@ fn test_file_operations() {
     )
     .expect("write_file failed");
 
-    let data = read_file(&mut jbd2_dev, &mut fs, "/filetest/empty.txt").expect("read_file failed");
+    let data = read_file(
+        &mut jbd2_dev,
+        &mut fs,
+        "/filetest/empty.txt",
+        MAXIMUM_READ_BYTES,
+    )
+    .expect("read_file failed");
     assert_eq!(data, b"First line\nSecond line".to_vec());
 
     umount(fs, &mut jbd2_dev).expect("umount failed");
@@ -1708,7 +1753,8 @@ fn large_sequential_write_uses_one_contiguous_extent() {
 
     write_file(&mut jbd2_dev, &mut fs, "/large/run.bin", 0, &data).expect("large write failed");
 
-    let read_back = read_file(&mut jbd2_dev, &mut fs, "/large/run.bin").expect("read failed");
+    let read_back = read_file(&mut jbd2_dev, &mut fs, "/large/run.bin", MAXIMUM_READ_BYTES)
+        .expect("read failed");
     assert_eq!(read_back.len(), data.len());
     assert_eq!(&read_back[..BLOCK_SIZE], &data[..BLOCK_SIZE]);
     assert_eq!(
